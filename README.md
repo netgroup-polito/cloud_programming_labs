@@ -1,5 +1,5 @@
-# Cloud Programmin Course: Labs and Exercises
-Repository for labs and exercises of the Cloud Programming course @ Politecnico di Torino.
+# Cloud Programming Course: Labs and Exercises
+Repository for labs and exercises of the [Cloud Programming](https://cloudprog.frisso.net) course @ [Politecnico di Torino](https://www.polito.it).
 
 ## License
 This work is licensed under an **[Apache 2.0 License](LICENSE)**.
