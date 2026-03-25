@@ -1,0 +1,12 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: saga-visual
+
+services:
+  order:
+    url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  customer:
+    url: ${CUSTOMER_SERVICE_URL:http://localhost:8082}

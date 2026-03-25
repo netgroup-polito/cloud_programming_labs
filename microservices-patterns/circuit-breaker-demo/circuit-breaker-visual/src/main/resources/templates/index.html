@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit Breaker Pattern - Visual Simulation</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a; color: #e2e8f0; min-height: 100vh; overflow-x: hidden;
+        }
+
+        /* ===================== HEADER ===================== */
+        .header {
+            text-align: center; padding: 24px 20px 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #1e293b;
+        }
+        .header h1 {
+            font-size: 1.8rem; font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header p { color: #94a3b8; margin-top: 6px; font-size: 0.95rem; }
+        .header .real-badge {
+            display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 12px;
+            font-size: 0.75rem; font-weight: 600;
+            background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3);
+        }
+
+        /* ===================== SUPPLIER PANEL ===================== */
+        .supplier-panel { max-width: 1200px; margin: 20px auto 0; padding: 0 20px; }
+        .supplier-box {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 12px;
+        }
+        .supplier-box h3 { font-size: 1rem; color: #cbd5e1; display: flex; align-items: center; gap: 8px; }
+        .supplier-status { display: flex; align-items: center; gap: 12px; }
+        .status-badge {
+            padding: 6px 16px; border-radius: 20px; font-weight: 600;
+            font-size: 0.85rem; letter-spacing: 0.5px; transition: all 0.3s ease;
+        }
+        .status-badge.healthy { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .status-badge.slow {
+            background: rgba(239,68,68,0.15); color: #f87171;
+            border: 1px solid rgba(239,68,68,0.3); animation: pulse-red 1.5s ease-in-out infinite;
+        }
+        .status-badge.unknown { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+        @keyframes pulse-red {
+            0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+        .supplier-info { font-size: 0.8rem; color: #64748b; }
+
+        /* ===================== CONNECTION LINES ===================== */
+        .connections { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: center; gap: 40%; }
+        .conn-line { width: 2px; height: 30px; background: #334155; position: relative; }
+        .conn-line::after {
+            content: ''; position: absolute; bottom: -4px; left: -3px;
+            width: 8px; height: 8px; border-left: 2px solid #475569;
+            border-bottom: 2px solid #475569; transform: rotate(-45deg);
+        }
+
+        /* ===================== MAIN COLUMNS ===================== */
+        .main-grid { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; transition: border-color 0.5s ease; }
+        .panel.danger { border-color: #dc2626; }
+        .panel-header { padding: 14px 20px; border-bottom: 1px solid #334155; }
+        .panel-header h2 { font-size: 1rem; font-weight: 600; }
+        .panel-header .label-nocb { color: #f87171; }
+        .panel-header .label-cb { color: #38bdf8; }
+        .panel-header .subtitle { font-size: 0.75rem; color: #64748b; }
+        .panel-body { padding: 16px 20px; }
+
+        /* ===================== SERVICE STATUS ===================== */
+        .service-status {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+            padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .service-status.ok { background: rgba(34,197,94,0.1); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+        .service-status.down { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); animation: flash 1s ease-in-out infinite; }
+        .service-status.loading { background: rgba(100,116,139,0.1); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.green { background: #4ade80; }
+        .status-dot.red { background: #f87171; }
+        .status-dot.gray { background: #64748b; }
+
+        /* ===================== THREAD POOL ===================== */
+        .section-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+        .thread-pool { display: flex; gap: 8px; margin-bottom: 6px; }
+        .thread-slot {
+            flex: 1; height: 32px; border-radius: 6px; background: #0f172a;
+            border: 2px solid #334155; display: flex; align-items: center;
+            justify-content: center; font-size: 0.7rem; font-weight: 600;
+            color: #475569; transition: all 0.3s ease;
+        }
+        .thread-slot.free { background: #0f172a; border-color: #334155; color: #475569; }
+        .thread-slot.busy { background: rgba(250,204,21,0.1); border-color: #ca8a04; color: #fbbf24; }
+        .thread-slot.stuck {
+            background: rgba(239,68,68,0.15); border-color: #dc2626; color: #f87171;
+            animation: thread-stuck 1s ease-in-out infinite;
+        }
+        @keyframes thread-stuck { 0%,100% { background: rgba(239,68,68,0.15); } 50% { background: rgba(239,68,68,0.3); } }
+        .thread-counter { font-size: 0.8rem; color: #94a3b8; margin-bottom: 16px; }
+        .thread-counter strong { color: #e2e8f0; }
+        .thread-exhausted {
+            display: none; padding: 8px 12px; background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; color: #f87171;
+            font-size: 0.8rem; font-weight: 600; text-align: center; margin-bottom: 12px;
+            animation: flash 1s ease-in-out infinite;
+        }
+        .thread-exhausted.visible { display: block; }
+        @keyframes flash { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* ===================== CIRCUIT BREAKER STATE ===================== */
+        .cb-section { margin-bottom: 16px; padding: 12px; background: rgba(15,23,42,0.5); border-radius: 8px; }
+        .cb-state-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .cb-badge { padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; letter-spacing: 1px; transition: all 0.5s ease; }
+        .cb-badge.closed { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .cb-badge.open { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); animation: pulse-red 1.5s ease-in-out infinite; }
+        .cb-badge.half-open { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); animation: pulse-yellow 1.5s ease-in-out infinite; }
+        @keyframes pulse-yellow { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.4); } 50% { box-shadow: 0 0 0 8px rgba(251,191,36,0); } }
+        .cb-detail { font-size: 0.78rem; color: #94a3b8; }
+        .cb-detail strong { color: #cbd5e1; }
+
+        /* ===================== METRICS ===================== */
+        .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .metric-card { padding: 10px 12px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b; }
+        .metric-card .label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-card .value { font-size: 1.3rem; font-weight: 700; margin-top: 2px; transition: all 0.3s ease; }
+        .metric-card .value.green { color: #4ade80; }
+        .metric-card .value.red { color: #f87171; }
+        .metric-card .value.blue { color: #60a5fa; }
+        .metric-card .value.yellow { color: #fbbf24; }
+        .metric-card .value.white { color: #e2e8f0; }
+
+        /* ===================== REQUEST LIST ===================== */
+        .request-list-container {
+            max-height: 200px; overflow-y: auto; border: 1px solid #334155;
+            border-radius: 8px; background: #0f172a;
+        }
+        .request-list-container::-webkit-scrollbar { width: 4px; }
+        .request-list-container::-webkit-scrollbar-track { background: #0f172a; }
+        .request-list-container::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .request-item {
+            padding: 6px 12px; border-bottom: 1px solid #1e293b; font-size: 0.78rem;
+            display: flex; justify-content: space-between; align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .request-item:last-child { border-bottom: none; }
+        .request-item .req-id { color: #94a3b8; font-weight: 600; width: 36px; }
+        .request-item .req-status { padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; }
+        .request-item .req-status.ok { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .request-item .req-status.err { background: rgba(239,68,68,0.15); color: #f87171; }
+        .request-item .req-status.fb { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .request-item .req-status.wait { background: rgba(251,191,36,0.15); color: #fbbf24; }
+        .request-item .req-time { color: #64748b; font-size: 0.72rem; }
+
+        /* ===================== CONTROLS ===================== */
+        .controls { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .controls-box {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: center; gap: 12px; flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.85rem;
+            font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #3b82f6; }
+        .btn-warning { background: #dc2626; color: white; }
+        .btn-warning:hover:not(:disabled) { background: #ef4444; }
+        .btn-success { background: #16a34a; color: white; }
+        .btn-success:hover:not(:disabled) { background: #22c55e; }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #64748b; }
+        .btn-auto { background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; }
+        .btn-auto:hover:not(:disabled) { background: linear-gradient(135deg, #8b5cf6, #3b82f6); }
+
+        /* ===================== EXPLANATION BANNER ===================== */
+        .explanation { max-width: 1200px; margin: 0 auto 20px; padding: 0 20px; }
+        .explanation-box {
+            padding: 14px 20px; border-radius: 12px; font-size: 0.85rem;
+            line-height: 1.5; transition: all 0.5s ease; display: none;
+        }
+        .explanation-box.visible { display: block; }
+        .explanation-box.info { background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+        .explanation-box.danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+        .explanation-box.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+        .explanation-box strong { color: #e2e8f0; }
+
+        /* ===================== EVENT LOG ===================== */
+        .log-section { max-width: 1200px; margin: 0 auto 30px; padding: 0 20px; }
+        .log-box { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; }
+        .log-header { padding: 10px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .log-header h3 { font-size: 0.9rem; color: #94a3b8; }
+        .log-content {
+            max-height: 200px; overflow-y: auto; padding: 8px 0;
+            font-family: 'JetBrains Mono','Fira Code','Consolas',monospace; font-size: 0.75rem;
+        }
+        .log-content::-webkit-scrollbar { width: 4px; }
+        .log-content::-webkit-scrollbar-track { background: #1e293b; }
+        .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+        .log-entry { padding: 3px 20px; display: flex; gap: 8px; animation: slideIn 0.2s ease; }
+        .log-entry .time { color: #475569; white-space: nowrap; }
+        .log-entry .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600; font-size: 0.68rem; white-space: nowrap; }
+        .log-entry .tag.nocb { background: rgba(248,113,113,0.15); color: #f87171; }
+        .log-entry .tag.cb { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .log-entry .tag.sys { background: rgba(168,85,247,0.15); color: #c084fc; }
+        .log-entry .msg { color: #94a3b8; }
+        .log-entry .msg .ok { color: #4ade80; }
+        .log-entry .msg .err { color: #f87171; }
+        .log-entry .msg .fb { color: #60a5fa; }
+        .log-entry .msg .warn { color: #fbbf24; }
+
+        @media (max-width: 768px) {
+            .main-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.3rem; }
+            .controls-box { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <h1>Circuit Breaker Pattern &mdash; Visual Simulation</h1>
+    <p>Real-time comparison: Store Service <strong>without</strong> vs <strong>with</strong> Circuit Breaker</p>
+    <span class="real-badge">LIVE SERVICES &mdash; connected to real microservices via REST</span>
+</div>
+
+<!-- SUPPLIER -->
+<div class="supplier-panel">
+    <div class="supplier-box">
+        <h3><span style="font-size:1.4rem">&#x1F4E6;</span> Supplier Service (port 8080)</h3>
+        <div class="supplier-status">
+            <span id="supplierBadge" class="status-badge unknown">Connecting...</span>
+            <span class="supplier-info" id="supplierInfo"></span>
+        </div>
+    </div>
+</div>
+
+<!-- CONNECTION LINES -->
+<div class="connections"><div class="conn-line"></div><div class="conn-line"></div></div>
+
+<!-- EXPLANATION BANNER -->
+<div class="explanation">
+    <div id="explanation" class="explanation-box info visible">
+        This simulation calls the <strong>real microservices</strong> via REST.
+        All response times are authentic. The Supplier in SLOW mode takes a real 30 seconds to respond.
+        Press <strong>Auto Demo</strong> for a guided walkthrough, or use the manual controls.
+    </div>
+</div>
+
+<!-- MAIN PANELS -->
+<div class="main-grid">
+
+    <!-- LEFT: NO CIRCUIT BREAKER -->
+    <div id="panelNoCb" class="panel">
+        <div class="panel-header">
+            <h2 class="label-nocb">WITHOUT Circuit Breaker</h2>
+            <span class="subtitle">store-service-no-cb &bull; port 8081</span>
+        </div>
+        <div class="panel-body">
+            <div class="service-status loading" id="noCbStatus">
+                <span class="status-dot gray"></span> Connecting to service...
+            </div>
+
+            <div class="section-label">Thread Pool (max 5)</div>
+            <div class="thread-pool" id="threadPoolNoCb">
+                <div class="thread-slot free" id="noCb-t0">T1</div>
+                <div class="thread-slot free" id="noCb-t1">T2</div>
+                <div class="thread-slot free" id="noCb-t2">T3</div>
+                <div class="thread-slot free" id="noCb-t3">T4</div>
+                <div class="thread-slot free" id="noCb-t4">T5</div>
+            </div>
+            <div class="thread-counter">Threads in use: <strong id="noCbThreadCount">0</strong> / 5 &nbsp;|&nbsp; Queued: <strong id="noCbQueued">0</strong></div>
+            <div class="thread-exhausted" id="noCbExhausted">THREADS EXHAUSTED &mdash; Service cannot accept new requests!</div>
+
+            <div class="metrics">
+                <div class="metric-card"><div class="label">Success</div><div class="value green" id="noCbSuccess">0</div></div>
+                <div class="metric-card"><div class="label">Errors / Timeout</div><div class="value red" id="noCbFailure">0</div></div>
+                <div class="metric-card"><div class="label">Avg Time</div><div class="value white" id="noCbAvgTime">-</div></div>
+                <div class="metric-card"><div class="label">In Flight</div><div class="value yellow" id="noCbInFlight">0</div></div>
+            </div>
+
+            <div class="section-label">Requests</div>
+            <div class="request-list-container" id="noCbRequests"></div>
+        </div>
+    </div>
+
+    <!-- RIGHT: WITH CIRCUIT BREAKER -->
+    <div id="panelCb" class="panel">
+        <div class="panel-header">
+            <h2 class="label-cb">WITH Circuit Breaker</h2>
+            <span class="subtitle">store-service-cb &bull; port 8082</span>
+        </div>
+        <div class="panel-body">
+            <div class="service-status loading" id="cbStatus">
+                <span class="status-dot gray"></span> Connecting to service...
+            </div>
+
+            <div class="section-label">Thread Pool (max 5)</div>
+            <div class="thread-pool" id="threadPoolCb">
+                <div class="thread-slot free" id="cb-t0">T1</div>
+                <div class="thread-slot free" id="cb-t1">T2</div>
+                <div class="thread-slot free" id="cb-t2">T3</div>
+                <div class="thread-slot free" id="cb-t3">T4</div>
+                <div class="thread-slot free" id="cb-t4">T5</div>
+            </div>
+            <div class="thread-counter">Threads in use: <strong id="cbThreadCount">0</strong> / 5</div>
+            <div class="thread-exhausted" id="cbExhausted">THREADS EXHAUSTED!</div>
+
+            <!-- Circuit Breaker State -->
+            <div class="cb-section">
+                <div class="section-label">Circuit Breaker State (from /store/health)</div>
+                <div class="cb-state-row">
+                    <span id="cbBadge" class="cb-badge closed">CLOSED</span>
+                    <span class="cb-detail">Failure rate: <strong id="cbFailureRate">-</strong></span>
+                </div>
+                <div class="cb-detail" style="margin-top:4px;">
+                    Calls: <strong id="cbBuffered">0</strong> buffered |
+                    <span style="color:#4ade80" id="cbSuccessful">0</span> ok |
+                    <span style="color:#f87171" id="cbFailed">0</span> fail |
+                    <span style="color:#60a5fa" id="cbNotPermitted">0</span> blocked
+                </div>
+                <div class="cb-detail" style="margin-top:4px;">
+                    <span id="cbTransitionInfo">Config: threshold 50%, window 5, wait 15s</span>
+                </div>
+            </div>
+
+            <div class="metrics">
+                <div class="metric-card"><div class="label">Success</div><div class="value green" id="cbSuccess">0</div></div>
+                <div class="metric-card"><div class="label">Errors / Timeout</div><div class="value red" id="cbFailure">0</div></div>
+                <div class="metric-card"><div class="label">Fallback (cache)</div><div class="value blue" id="cbFallback">0</div></div>
+                <div class="metric-card"><div class="label">Avg Time</div><div class="value white" id="cbAvgTime">-</div></div>
+            </div>
+
+            <div class="section-label">Requests</div>
+            <div class="request-list-container" id="cbRequests"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- CONTROLS -->
+<div class="controls">
+    <div class="controls-box">
+        <button class="btn btn-primary" id="btnSingle" onclick="demo.sendSingle()">&#9654; Single Request</button>
+        <button class="btn btn-primary" id="btnBurst" onclick="demo.sendBurst(10)">&#9654;&#9654; Send Burst (10)</button>
+        <button class="btn btn-warning" id="btnFault" onclick="demo.toggleSupplier()">&#9888; Fault Supplier</button>
+        <button class="btn btn-auto" id="btnAuto" onclick="demo.autoDemo()">&#127916; Auto Demo</button>
+        <button class="btn btn-secondary" id="btnReset" onclick="demo.reset()">&#8634; Reset</button>
+    </div>
+</div>
+
+<!-- EVENT LOG -->
+<div class="log-section">
+    <div class="log-box">
+        <div class="log-header">
+            <h3>Event Log</h3>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="demo.clearLog()">Clear</button>
+        </div>
+        <div class="log-content" id="logContent"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    /* ===================== STATE ===================== */
+    let requestCounter = 0;
+    let supplierMode = 'UNKNOWN';
+    let autoDemoRunning = false;
+    let statusPollTimer = null;
+
+    // Client-side status derivation for no-CB service:
+    // Track when all 5 threads became full — if they stay full for
+    // UNRESPONSIVE_THRESHOLD ms, the service is effectively unresponsive.
+    let noCbThreadsFullSince = 0;   // timestamp when inFlight first hit >=5, or 0
+    const UNRESPONSIVE_THRESHOLD = 4000; // 4 seconds with full threads = unresponsive
+
+    // Last known CB state from server-side health polling
+    let lastKnownCbState = 'CLOSED';
+
+    const stats = {
+        noCb: { success: 0, failure: 0, totalTime: 0, count: 0, inFlight: 0 },
+        cb:   { success: 0, failure: 0, fallback: 0, totalTime: 0, count: 0, inFlight: 0 }
+    };
+
+    /* ===================== API ENDPOINTS (proxy) ===================== */
+    const API = {
+        status:    '/api/proxy/status',  // server-side cached, instant response
+        supplier:  { simulate: m => `/api/proxy/supplier/simulate/${m}` },
+        noCb:      { products: '/api/proxy/no-cb/products' },
+        cb:        { products: '/api/proxy/cb/products' }
+    };
+
+    /* ===================== STATUS POLLING (server-side cached) ===================== */
+    // Single lightweight request to /api/proxy/status which returns data
+    // cached by the server's @Scheduled HealthMonitor. This NEVER blocks
+    // because the server polls the real services on its own thread.
+    function startPolling() { pollStatus(); statusPollTimer = setInterval(pollStatus, 1500); }
+
+    async function pollStatus() {
+        try {
+            const res = await fetch(API.status);
+            const data = await res.json();
+
+            // --- Supplier status (from server-side cache) ---
+            const supplier = data.supplier || {};
+            supplierMode = supplier.mode || 'UNKNOWN';
+            updateSupplierUI();
+
+            // --- CB health (from server-side cache) ---
+            const cbHealth = data.cbHealth || {};
+            if (cbHealth.circuitBreaker && cbHealth.circuitBreaker !== 'NONE') {
+                updateCBFromHealth(cbHealth);
+            }
+        } catch (e) {
+            // Visual app itself is down — rare, leave status unchanged
+        }
+
+        // --- Derive no-CB service status client-side ---
+        deriveNoCbStatus();
+
+        // --- Derive CB service status client-side ---
+        deriveCbStatus();
+    }
+
+    /** Derive no-CB status from observable client-side metrics */
+    function deriveNoCbStatus() {
+        const inFlight = stats.noCb.inFlight;
+
+        // Track how long threads have been full
+        if (inFlight >= 5) {
+            if (noCbThreadsFullSince === 0) noCbThreadsFullSince = Date.now();
+        } else {
+            noCbThreadsFullSince = 0;
+        }
+
+        // If no requests have been sent yet, show "operational" (idle)
+        if (stats.noCb.count === 0 && inFlight === 0) {
+            setServiceStatus('noCb', 'ok', 'Service operational');
+            return;
+        }
+
+        // If threads have been full for longer than threshold → unresponsive
+        if (noCbThreadsFullSince > 0 &&
+            (Date.now() - noCbThreadsFullSince) > UNRESPONSIVE_THRESHOLD) {
+            setServiceStatus('noCb', 'down',
+                'UNRESPONSIVE &mdash; all threads blocked by slow supplier!');
+            return;
+        }
+
+        // If threads are full but not long enough yet → warning
+        if (inFlight >= 5) {
+            setServiceStatus('noCb', 'down',
+                'THREADS FULL &mdash; waiting on slow supplier...');
+            return;
+        }
+
+        // Otherwise → operational
+        setServiceStatus('noCb', 'ok', 'Service operational');
+    }
+
+    /** Derive CB status from CB state + observable behavior.
+     *  Key insight: when CB is OPEN, the service is PROTECTED, not down.
+     *  It actively returns fast fallback responses — that's the whole point. */
+    function deriveCbStatus() {
+        const inFlight = stats.cb.inFlight;
+
+        // If no requests have been sent yet, show "operational" (idle)
+        if (stats.cb.count === 0 && inFlight === 0) {
+            setServiceStatus('cb', 'ok', 'Service operational');
+            return;
+        }
+
+        if (lastKnownCbState === 'OPEN') {
+            // CB is OPEN — the service is PROTECTED, returning instant fallback
+            setServiceStatus('cb', 'ok',
+                'PROTECTED &mdash; Circuit Breaker OPEN, fast fallback active');
+            return;
+        }
+
+        if (lastKnownCbState === 'HALF_OPEN') {
+            setServiceStatus('cb', 'ok',
+                'RECOVERING &mdash; Circuit Breaker testing with probe requests...');
+            return;
+        }
+
+        // CB is CLOSED — check if we're currently detecting failures
+        if (inFlight > 0 && supplierMode === 'SLOW') {
+            setServiceStatus('cb', 'ok',
+                'Detecting failures &mdash; CB will open after threshold...');
+            return;
+        }
+
+        setServiceStatus('cb', 'ok', 'Service operational');
+    }
+
+    function updateSupplierUI() {
+        const badge = document.getElementById('supplierBadge');
+        const info = document.getElementById('supplierInfo');
+        if (supplierMode === 'HEALTHY') {
+            badge.textContent = 'HEALTHY'; badge.className = 'status-badge healthy';
+            info.textContent = 'Response: ~300 ms';
+        } else if (supplierMode === 'SLOW') {
+            badge.textContent = 'SLOW (30 s delay)'; badge.className = 'status-badge slow';
+            info.textContent = 'Response: 30 000 ms!';
+        } else if (supplierMode === 'UNREACHABLE') {
+            badge.textContent = 'UNREACHABLE'; badge.className = 'status-badge slow';
+            info.textContent = 'Cannot connect';
+        } else {
+            badge.textContent = 'Connecting...'; badge.className = 'status-badge unknown';
+            info.textContent = '';
+        }
+    }
+
+    function setServiceStatus(prefix, state, html) {
+        const el = document.getElementById(`${prefix}Status`);
+        el.className = 'service-status ' + (state === 'ok' ? 'ok' : state === 'down' ? 'down' : 'loading');
+        const dot = state === 'ok' ? 'green' : state === 'down' ? 'red' : 'gray';
+        el.innerHTML = `<span class="status-dot ${dot}"></span> ${html}`;
+    }
+
+    function updateCBFromHealth(data) {
+        if (!data.circuitBreaker || data.circuitBreaker === 'NONE') return;
+        const cb = data.circuitBreaker;
+        const state = cb.state || 'CLOSED';
+        lastKnownCbState = state;
+
+        const badge = document.getElementById('cbBadge');
+        if (state === 'CLOSED')         { badge.textContent = 'CLOSED';    badge.className = 'cb-badge closed'; }
+        else if (state === 'OPEN')      { badge.textContent = 'OPEN';      badge.className = 'cb-badge open'; }
+        else if (state === 'HALF_OPEN') { badge.textContent = 'HALF-OPEN'; badge.className = 'cb-badge half-open'; }
+
+        document.getElementById('cbFailureRate').textContent  = cb.failureRate || '-';
+        document.getElementById('cbBuffered').textContent      = cb.bufferedCalls || 0;
+        document.getElementById('cbSuccessful').textContent    = cb.successfulCalls || 0;
+        document.getElementById('cbFailed').textContent        = cb.failedCalls || 0;
+        document.getElementById('cbNotPermitted').textContent  = cb.notPermittedCalls || 0;
+
+        const info = document.getElementById('cbTransitionInfo');
+        if (state === 'OPEN')
+            info.textContent = 'Circuit OPEN: all requests get immediate fallback. Transition to HALF-OPEN in 15 s...';
+        else if (state === 'HALF_OPEN')
+            info.textContent = 'Testing: 2 probe requests allowed to check if the Supplier has recovered...';
+        else
+            info.textContent = 'Config: threshold 50%, window 5, wait 15 s';
+    }
+
+    /* ===================== SEND REQUESTS ===================== */
+    async function sendToService(prefix, reqId) {
+        const url = prefix === 'noCb' ? API.noCb.products : API.cb.products;
+
+        stats[prefix].inFlight++;
+        updateThreadPoolUI(prefix);
+        addRequest(prefix, reqId, 'wait', 'Calling service...');
+
+        // Immediately update derived status (threads just changed)
+        if (prefix === 'noCb') deriveNoCbStatus(); else deriveCbStatus();
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            const elapsed = data.responseTime || 0;
+
+            stats[prefix].inFlight--;
+
+            if (data.success) {
+                if (data.fallback) {
+                    stats[prefix].fallback = (stats[prefix].fallback || 0) + 1;
+                    updateRequest(prefix, reqId, 'fb', `Fallback (${elapsed} ms) — cached data`);
+                    log(prefix === 'noCb' ? 'nocb' : 'cb',
+                        `#${reqId} &rarr; CB OPEN &rarr; <span class="fb">Fallback ${elapsed} ms</span>`);
+                } else {
+                    stats[prefix].success++;
+                    updateRequest(prefix, reqId, 'ok', `OK (${elapsed} ms)`);
+                    log(prefix === 'noCb' ? 'nocb' : 'cb',
+                        `#${reqId} &rarr; Supplier &rarr; <span class="ok">${elapsed} ms OK</span>`);
+                }
+            } else {
+                stats[prefix].failure++;
+                updateRequest(prefix, reqId, 'err', `Error (${elapsed} ms) — ${data.error || 'timeout'}`);
+                log(prefix === 'noCb' ? 'nocb' : 'cb',
+                    `#${reqId} &rarr; <span class="err">ERROR ${elapsed} ms</span> (${data.error || ''})`);
+            }
+
+            stats[prefix].totalTime += elapsed;
+            stats[prefix].count++;
+        } catch (e) {
+            stats[prefix].inFlight--;
+            stats[prefix].failure++;
+            stats[prefix].count++;
+            updateRequest(prefix, reqId, 'err', 'Network error');
+            log(prefix === 'noCb' ? 'nocb' : 'cb',
+                `#${reqId} &rarr; <span class="err">Network error</span>`);
+        }
+
+        updateThreadPoolUI(prefix);
+        updateStatsUI(prefix);
+        // Update derived status after response
+        if (prefix === 'noCb') deriveNoCbStatus(); else deriveCbStatus();
+    }
+
+    /* ===================== UI HELPERS ===================== */
+    function updateThreadPoolUI(prefix) {
+        const inFlight = stats[prefix].inFlight;
+        const busy = Math.min(inFlight, 5);
+        const queued = Math.max(inFlight - 5, 0);
+        const stuck = supplierMode === 'SLOW' && inFlight > 0;
+
+        for (let i = 0; i < 5; i++) {
+            const el = document.getElementById(`${prefix}-t${i}`);
+            if (i < busy) el.className = 'thread-slot ' + (stuck && prefix === 'noCb' ? 'stuck' : 'busy');
+            else          el.className = 'thread-slot free';
+        }
+
+        document.getElementById(`${prefix}ThreadCount`).textContent = busy;
+        if (prefix === 'noCb') document.getElementById('noCbQueued').textContent = queued;
+        const inFlightEl = document.getElementById(`${prefix}InFlight`);
+        if (inFlightEl) inFlightEl.textContent = inFlight;
+
+        document.getElementById(`${prefix}Exhausted`).classList.toggle('visible', busy >= 5);
+        const panel = document.getElementById(prefix === 'noCb' ? 'panelNoCb' : 'panelCb');
+        panel.classList.toggle('danger', busy >= 5 && stuck);
+    }
+
+    function updateStatsUI(prefix) {
+        const s = stats[prefix];
+        document.getElementById(`${prefix}Success`).textContent = s.success;
+        document.getElementById(`${prefix}Failure`).textContent = s.failure;
+        if (prefix === 'cb') document.getElementById('cbFallback').textContent = s.fallback || 0;
+        const avg = s.count > 0 ? Math.round(s.totalTime / s.count) : 0;
+        document.getElementById(`${prefix}AvgTime`).textContent = s.count > 0 ? formatTime(avg) : '-';
+    }
+
+    function formatTime(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : ms + ' ms'; }
+
+    function addRequest(prefix, id, status, text) {
+        const c = document.getElementById(`${prefix}Requests`);
+        const el = document.createElement('div');
+        el.className = 'request-item'; el.id = `${prefix}-req-${id}`;
+        el.innerHTML = `<span class="req-id">#${id}</span><span class="req-status ${status}">${statusLabel(status)}</span><span class="req-time">${text}</span>`;
+        c.insertBefore(el, c.firstChild);
+        while (c.children.length > 30) c.removeChild(c.lastChild);
+    }
+
+    function updateRequest(prefix, id, status, text) {
+        const el = document.getElementById(`${prefix}-req-${id}`);
+        if (!el) return;
+        el.querySelector('.req-status').className = 'req-status ' + status;
+        el.querySelector('.req-status').textContent = statusLabel(status);
+        el.querySelector('.req-time').textContent = text;
+    }
+
+    function statusLabel(s) {
+        switch (s) {
+            case 'ok': return 'OK'; case 'err': return 'ERROR';
+            case 'fb': return 'FALLBACK'; case 'wait': return 'PENDING';
+            default: return s.toUpperCase();
+        }
+    }
+
+    /* ===================== LOG ===================== */
+    function log(tag, message) {
+        const el = document.getElementById('logContent');
+        const entry = document.createElement('div'); entry.className = 'log-entry';
+        const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        const map = { nocb: ['nocb','NO-CB'], cb: ['cb','CB'], sys: ['sys','SYS'] };
+        const [cls, label] = map[tag] || ['sys','SYS'];
+        entry.innerHTML = `<span class="time">${time}</span><span class="tag ${cls}">${label}</span><span class="msg">${message}</span>`;
+        el.insertBefore(entry, el.firstChild);
+        while (el.children.length > 100) el.removeChild(el.lastChild);
+    }
+
+    /* ===================== UTILITY ===================== */
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function setButtonsEnabled(on) {
+        ['btnSingle','btnBurst','btnFault','btnAuto'].forEach(id => document.getElementById(id).disabled = !on);
+    }
+    function showExplanation(type, html) {
+        const el = document.getElementById('explanation');
+        el.className = `explanation-box ${type} visible`; el.innerHTML = html;
+    }
+    function updateFaultButton() {
+        const btn = document.getElementById('btnFault');
+        if (supplierMode === 'SLOW') {
+            btn.textContent = '\u2705 Restore Supplier'; btn.className = 'btn btn-success';
+        } else {
+            btn.textContent = '\u26A0 Fault Supplier'; btn.className = 'btn btn-warning';
+        }
+    }
+
+    /* ===================== DEMO CONTROLLER ===================== */
+    window.demo = {
+
+        async sendSingle() {
+            requestCounter++;
+            const id = requestCounter;
+            log('sys', `Sending request #${id} to both services...`);
+            await Promise.all([ sendToService('noCb', id), sendToService('cb', id) ]);
+        },
+
+        async sendBurst(count) {
+            setButtonsEnabled(false);
+            log('sys', `Sending burst of <span class="warn">${count} requests</span> to both services...`);
+            const promises = [];
+            for (let i = 0; i < count; i++) {
+                requestCounter++;
+                promises.push(sendToService('noCb', requestCounter));
+                promises.push(sendToService('cb', requestCounter));
+                await sleep(100);
+            }
+            await Promise.all(promises);
+            setButtonsEnabled(true);
+            log('sys', 'Burst complete');
+        },
+
+        async toggleSupplier() {
+            const newMode = supplierMode === 'SLOW' ? 'healthy' : 'slow';
+            try {
+                const res = await fetch(API.supplier.simulate(newMode), { method: 'POST' });
+                const data = await res.json();
+                supplierMode = data.currentMode || newMode.toUpperCase();
+                updateSupplierUI(); updateFaultButton();
+                if (supplierMode === 'SLOW') {
+                    log('sys', `Supplier &rarr; <span class="err">SLOW</span> (real 30-second delay!)`);
+                    showExplanation('danger',
+                        '<strong>Fault injected!</strong> The Supplier now takes a real 30 seconds to respond. ' +
+                        'Send a burst to see threads getting stuck (without CB) vs the Circuit Breaker opening (with CB).');
+                } else {
+                    log('sys', `Supplier &rarr; <span class="ok">HEALTHY</span> (restored)`);
+                    showExplanation('success',
+                        '<strong>Supplier restored!</strong> Responses back to ~300 ms. ' +
+                        'The Circuit Breaker will transition to HALF-OPEN, probe the service, and return to CLOSED.');
+                }
+            } catch (e) {
+                log('sys', '<span class="err">Error toggling supplier mode</span>');
+            }
+        },
+
+        async autoDemo() {
+            if (autoDemoRunning) return;
+            autoDemoRunning = true;
+            setButtonsEnabled(false);
+            document.getElementById('btnAuto').disabled = true;
+
+            await this.doReset();
+            await sleep(1000);
+
+            // === PHASE 1 ===
+            showExplanation('info',
+                '<strong>Phase 1 &mdash; Normal operation.</strong> Supplier is healthy. ' +
+                'Sending 3 requests to both services. Expect similar response times (~300 ms).');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; PHASE 1: Normal operation &#9552;&#9552;&#9552;</span>');
+
+            for (let i = 0; i < 3; i++) {
+                requestCounter++;
+                sendToService('noCb', requestCounter);
+                sendToService('cb', requestCounter);
+                await sleep(500);
+            }
+            await sleep(2000);
+
+            // === PHASE 2 ===
+            showExplanation('danger',
+                '<strong>Phase 2 &mdash; Supplier failure!</strong> Switching to SLOW mode (30 s delay). ' +
+                'Now sending 8 concurrent requests. Watch what happens to each service...');
+            log('sys', '<span class="err">&#9552;&#9552;&#9552; PHASE 2: Supplier failure! &#9552;&#9552;&#9552;</span>');
+
+            try {
+                await fetch(API.supplier.simulate('slow'), { method: 'POST' });
+                supplierMode = 'SLOW'; updateSupplierUI(); updateFaultButton();
+                log('sys', `Supplier &rarr; <span class="err">SLOW</span> (30-second delay)`);
+            } catch (e) {
+                log('sys', '<span class="err">Error switching mode</span>');
+                autoDemoRunning = false; setButtonsEnabled(true); return;
+            }
+            await sleep(1500);
+
+            // === PHASE 3 ===
+            showExplanation('danger',
+                '<strong>Phase 3 &mdash; Burst during failure!</strong> ' +
+                '8 requests sent. <span style="color:#f87171;">WITHOUT CB:</span> all threads will block for 30 s. ' +
+                '<span style="color:#60a5fa;">WITH CB:</span> after a few timeouts (3 s each), the CB opens and ' +
+                'remaining requests get instant fallback.');
+            log('sys', '<span class="warn">Sending burst of 8 requests during failure...</span>');
+
+            const burstPromises = [];
+            for (let i = 0; i < 8; i++) {
+                requestCounter++;
+                burstPromises.push(sendToService('noCb', requestCounter));
+                burstPromises.push(sendToService('cb', requestCounter));
+                await sleep(150);
+            }
+
+            log('sys', 'Waiting for responses... the CB side will be much faster!');
+            await sleep(8000);
+
+            showExplanation('info',
+                '<strong>See the difference!</strong> ' +
+                '<span style="color:#f87171;">WITHOUT CB:</span> all threads are blocked, the service is ' +
+                'completely unresponsive &mdash; cascading failure! ' +
+                '<span style="color:#60a5fa;">WITH CB:</span> the Circuit Breaker opened, requests get fallback in ' +
+                'milliseconds. The service stays operational!');
+
+            await sleep(5000);
+
+            // === PHASE 4 ===
+            showExplanation('success',
+                '<strong>Phase 4 &mdash; Supplier recovery.</strong> ' +
+                'Restoring the Supplier to HEALTHY. The CB will transition to HALF-OPEN after 15 seconds, ' +
+                'probe with 2 test requests, and if they succeed, return to CLOSED.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; PHASE 4: Recovery &#9552;&#9552;&#9552;</span>');
+
+            try {
+                await fetch(API.supplier.simulate('healthy'), { method: 'POST' });
+                supplierMode = 'HEALTHY'; updateSupplierUI(); updateFaultButton();
+                log('sys', `Supplier &rarr; <span class="ok">HEALTHY</span> (restored)`);
+            } catch (e) {}
+
+            log('sys', 'Waiting for pending no-CB requests to complete...');
+            await Promise.all(burstPromises);
+            log('sys', 'All requests completed.');
+
+            showExplanation('info',
+                '<strong>Waiting for CB transition...</strong> ' +
+                'The Circuit Breaker waits 15 seconds before moving to HALF-OPEN to test the service. ' +
+                'Watch the CB state in the right panel.');
+            log('sys', 'Waiting for CB to transition to HALF-OPEN (15 seconds)...');
+            await sleep(16000);
+
+            // === PHASE 5 ===
+            showExplanation('info',
+                '<strong>Phase 5 &mdash; Recovery test.</strong> ' +
+                'The CB should now be in HALF-OPEN. Sending test requests. ' +
+                'If they succeed, the CB returns to CLOSED.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; PHASE 5: CB recovery test &#9552;&#9552;&#9552;</span>');
+
+            for (let i = 0; i < 3; i++) {
+                requestCounter++;
+                sendToService('noCb', requestCounter);
+                sendToService('cb', requestCounter);
+                await sleep(800);
+            }
+            await sleep(3000);
+
+            showExplanation('success',
+                '<strong>Demo complete!</strong> The Circuit Breaker: ' +
+                '(1) detected the failure after a few timeouts, ' +
+                '(2) protected the service by blocking requests (OPEN), ' +
+                '(3) returned immediate fallback responses from cache, ' +
+                '(4) probed for recovery (HALF-OPEN), ' +
+                '(5) restored normal operation (CLOSED). ' +
+                'Without CB, the service was frozen for the entire duration of the failure.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; Auto demo complete &#9552;&#9552;&#9552;</span>');
+
+            autoDemoRunning = false;
+            setButtonsEnabled(true);
+        },
+
+        async doReset() {
+            try { await fetch(API.supplier.simulate('healthy'), { method: 'POST' }); } catch (e) {}
+            supplierMode = 'HEALTHY'; updateSupplierUI(); updateFaultButton();
+
+            stats.noCb = { success: 0, failure: 0, totalTime: 0, count: 0, inFlight: 0 };
+            stats.cb   = { success: 0, failure: 0, fallback: 0, totalTime: 0, count: 0, inFlight: 0 };
+            requestCounter = 0;
+            noCbThreadsFullSince = 0;
+            lastKnownCbState = 'CLOSED';
+
+            ['noCb','cb'].forEach(prefix => {
+                document.getElementById(`${prefix}Requests`).innerHTML = '';
+                document.getElementById(`${prefix}Success`).textContent = '0';
+                document.getElementById(`${prefix}Failure`).textContent = '0';
+                document.getElementById(`${prefix}AvgTime`).textContent = '-';
+                document.getElementById(`${prefix}ThreadCount`).textContent = '0';
+                document.getElementById(`${prefix}Exhausted`).classList.remove('visible');
+                for (let i = 0; i < 5; i++) document.getElementById(`${prefix}-t${i}`).className = 'thread-slot free';
+                document.getElementById(prefix === 'noCb' ? 'panelNoCb' : 'panelCb').classList.remove('danger');
+                setServiceStatus(prefix, 'ok', 'Service operational');
+                const fl = document.getElementById(`${prefix}InFlight`);
+                if (fl) fl.textContent = '0';
+            });
+            document.getElementById('noCbQueued').textContent = '0';
+            document.getElementById('cbFallback').textContent = '0';
+        },
+
+        async reset() {
+            await this.doReset();
+            document.getElementById('logContent').innerHTML = '';
+            showExplanation('info',
+                'This simulation calls the <strong>real microservices</strong> via REST. ' +
+                'All response times are authentic. The Supplier in SLOW mode takes a real 30 seconds to respond. ' +
+                'Press <strong>Auto Demo</strong> for a guided walkthrough, or use the manual controls.');
+            log('sys', 'Simulation reset. Real services ready.');
+        },
+
+        clearLog() { document.getElementById('logContent').innerHTML = ''; }
+    };
+
+    /* ===================== INIT ===================== */
+    log('sys', 'Connecting to real services...');
+    startPolling();
+
+})();
+</script>
+</body>
+</html>

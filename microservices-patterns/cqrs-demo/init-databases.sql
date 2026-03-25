@@ -1,0 +1,4 @@
+CREATE DATABASE orderdb;
+CREATE DATABASE ticketdb;
+CREATE DATABASE deliverydb;
+CREATE DATABASE accountingdb;

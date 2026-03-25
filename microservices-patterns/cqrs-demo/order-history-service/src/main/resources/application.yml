@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-history-service
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: orderhistorydb
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+logging:
+  level:
+    com.example.orderhistoryservice: DEBUG

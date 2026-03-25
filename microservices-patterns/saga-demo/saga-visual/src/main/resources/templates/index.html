@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saga Pattern - Visual Demo</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a; color: #e2e8f0; min-height: 100vh; overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center; padding: 24px 20px 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #1e293b;
+        }
+        .header h1 {
+            font-size: 1.8rem; font-weight: 700;
+            background: linear-gradient(135deg, #f97316, #eab308);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header p { color: #94a3b8; margin-top: 6px; font-size: 0.95rem; }
+        .header .real-badge {
+            display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 12px;
+            font-size: 0.75rem; font-weight: 600;
+            background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3);
+        }
+
+        .main-layout { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+        .explanation {
+            padding: 14px 20px; border-radius: 12px; font-size: 0.85rem;
+            line-height: 1.5; margin-bottom: 16px; transition: all 0.5s ease;
+        }
+        .explanation.info { background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+        .explanation.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+        .explanation.danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+        .explanation.warn { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fde68a; }
+        .explanation strong { color: #e2e8f0; }
+
+        /* ===================== SAGA FLOW ===================== */
+        .saga-row {
+            display: grid; grid-template-columns: 1fr auto 1fr; gap: 20px;
+            align-items: start; margin-bottom: 20px;
+        }
+        .panel {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            overflow: hidden; transition: all 0.5s ease;
+        }
+        .panel.active { border-color: #f97316; box-shadow: 0 0 20px rgba(249,115,22,0.15); }
+        .panel.success { border-color: #22c55e; box-shadow: 0 0 20px rgba(34,197,94,0.15); }
+        .panel.rejected { border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.15); }
+        .panel-header {
+            padding: 12px 16px; border-bottom: 1px solid #334155;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-header h2 { font-size: 0.95rem; font-weight: 600; }
+        .panel-header .order-c { color: #f97316; }
+        .panel-header .customer-c { color: #38bdf8; }
+        .panel-body { padding: 14px 16px; }
+
+        /* Order list */
+        .order-card {
+            padding: 10px 14px; background: #0f172a; border-radius: 8px;
+            border: 2px solid #334155; margin-bottom: 8px;
+            transition: all 0.4s ease; animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+        .order-card.pending { border-color: #ca8a04; }
+        .order-card.approved { border-color: #16a34a; }
+        .order-card.rejected { border-color: #dc2626; }
+        .order-card .oc-header { display: flex; justify-content: space-between; align-items: center; }
+        .order-card .oc-id { font-size: 0.82rem; font-weight: 700; color: #cbd5e1; }
+        .order-badge {
+            padding: 3px 10px; border-radius: 12px; font-size: 0.7rem;
+            font-weight: 700; letter-spacing: 0.5px;
+        }
+        .order-badge.pending { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); animation: pulse-yellow 1.5s infinite; }
+        .order-badge.approved { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .order-badge.rejected { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        @keyframes pulse-yellow { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.3); } 50% { box-shadow: 0 0 0 6px rgba(251,191,36,0); } }
+        .order-card .oc-detail { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+        .order-card .oc-detail strong { color: #cbd5e1; }
+
+        /* Customer cards */
+        .customer-card {
+            padding: 12px 14px; background: #0f172a; border-radius: 8px;
+            border: 1px solid #334155; margin-bottom: 10px;
+        }
+        .customer-card .cc-name { font-size: 0.85rem; font-weight: 700; color: #cbd5e1; }
+        .credit-bar {
+            margin-top: 8px; height: 20px; background: #334155; border-radius: 6px;
+            overflow: hidden; position: relative;
+        }
+        .credit-bar .cb-used {
+            height: 100%; background: linear-gradient(90deg, #f97316, #ef4444);
+            border-radius: 6px; transition: width 0.6s ease; min-width: 0;
+        }
+        .credit-bar .cb-label {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.68rem; font-weight: 600; color: #e2e8f0;
+        }
+        .customer-card .cc-detail { font-size: 0.72rem; color: #64748b; margin-top: 6px; }
+        .customer-card .cc-detail strong { color: #94a3b8; }
+
+        /* Message flow */
+        .msg-flow {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-width: 140px; padding: 20px 0;
+        }
+        .mq-icon {
+            padding: 12px 18px; background: rgba(167,139,250,0.1); border: 2px solid rgba(167,139,250,0.3);
+            border-radius: 12px; text-align: center; margin-bottom: 12px;
+        }
+        .mq-icon .label { font-size: 0.72rem; color: #a78bfa; font-weight: 600; }
+        .mq-icon .name { font-size: 0.82rem; color: #c4b5fd; font-weight: 700; }
+        .msg-bubble {
+            padding: 6px 12px; border-radius: 8px; font-size: 0.72rem;
+            font-weight: 600; margin: 4px 0; max-width: 150px; text-align: center;
+            animation: msgSlide 0.5s ease;
+        }
+        .msg-bubble.outgoing { background: rgba(249,115,22,0.15); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
+        .msg-bubble.incoming-ok { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .msg-bubble.incoming-fail { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        @keyframes msgSlide { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+        .arrow { color: #475569; font-size: 1.2rem; margin: 2px 0; }
+
+        /* Saga steps */
+        .saga-steps { margin-bottom: 16px; }
+        .saga-steps .ss-title { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+        .step-row {
+            display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+            background: #0f172a; border-radius: 6px; margin-bottom: 4px;
+            border: 1px solid #1e293b; transition: all 0.3s ease;
+        }
+        .step-row.active { border-color: #f97316; background: rgba(249,115,22,0.05); }
+        .step-row.done { border-color: #16a34a; background: rgba(34,197,94,0.05); }
+        .step-row.fail { border-color: #dc2626; background: rgba(239,68,68,0.05); }
+        .step-num {
+            width: 22px; height: 22px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; font-size: 0.7rem;
+            font-weight: 700; flex-shrink: 0;
+        }
+        .step-num.pending { background: #334155; color: #64748b; }
+        .step-num.active { background: #f97316; color: white; animation: pulse-orange 1.5s infinite; }
+        .step-num.done { background: #16a34a; color: white; }
+        .step-num.fail { background: #dc2626; color: white; }
+        @keyframes pulse-orange { 0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.3); } 50% { box-shadow: 0 0 0 6px rgba(249,115,22,0); } }
+        .step-text { font-size: 0.78rem; color: #94a3b8; }
+        .step-text.active { color: #fb923c; font-weight: 600; }
+        .step-text.done { color: #4ade80; }
+        .step-text.fail { color: #f87171; }
+
+        /* Controls */
+        .controls {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 16px;
+        }
+        .controls-row {
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            flex-wrap: wrap; margin-bottom: 10px;
+        }
+        .controls-row:last-child { margin-bottom: 0; }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; font-size: 0.82rem;
+            font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-auto { background: linear-gradient(135deg, #f97316, #eab308); color: white; }
+        .btn-auto:hover:not(:disabled) { background: linear-gradient(135deg, #fb923c, #facc15); }
+        .btn-order { background: #2563eb; color: white; }
+        .btn-order:hover:not(:disabled) { background: #3b82f6; }
+        .btn-reject { background: #dc2626; color: white; }
+        .btn-reject:hover:not(:disabled) { background: #ef4444; }
+        .btn-reset { background: #475569; color: white; }
+        .btn-reset:hover:not(:disabled) { background: #64748b; }
+        .scenario-label { font-size: 0.78rem; color: #64748b; }
+
+        /* Log */
+        .log-box { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; }
+        .log-header { padding: 10px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .log-header h3 { font-size: 0.9rem; color: #94a3b8; }
+        .log-content {
+            max-height: 200px; overflow-y: auto; padding: 8px 0;
+            font-family: 'JetBrains Mono','Fira Code','Consolas',monospace; font-size: 0.75rem;
+        }
+        .log-content::-webkit-scrollbar { width: 4px; }
+        .log-content::-webkit-scrollbar-track { background: #1e293b; }
+        .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+        .log-entry { padding: 3px 16px; display: flex; gap: 8px; animation: fadeIn 0.2s ease; }
+        .log-entry .time { color: #475569; white-space: nowrap; }
+        .log-entry .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600; font-size: 0.68rem; white-space: nowrap; }
+        .log-entry .tag.order { background: rgba(249,115,22,0.15); color: #fb923c; }
+        .log-entry .tag.credit { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .log-entry .tag.saga { background: rgba(167,139,250,0.15); color: #c4b5fd; }
+        .log-entry .tag.sys { background: rgba(100,116,139,0.15); color: #94a3b8; }
+        .log-entry .msg { color: #94a3b8; }
+        .log-entry .msg .ok { color: #4ade80; }
+        .log-entry .msg .err { color: #f87171; }
+        .log-entry .msg .hl { color: #fbbf24; }
+
+        @media (max-width: 900px) {
+            .saga-row { grid-template-columns: 1fr; }
+            .msg-flow { flex-direction: row; flex-wrap: wrap; min-width: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Saga Pattern &mdash; Visual Demo</h1>
+    <p>Choreography-based saga: distributed transactions without 2PC</p>
+    <span class="real-badge">LIVE SERVICES &mdash; connected to real microservices via REST</span>
+</div>
+
+<div class="main-layout">
+
+    <div id="explanation" class="explanation info">
+        This demo shows the <strong>Choreography-based Saga pattern</strong>.
+        The Order Service creates an order in <strong>PENDING</strong> state and publishes an event.
+        The Customer Service checks credit and publishes the result.
+        The order is then <strong>APPROVED</strong> or <strong>REJECTED</strong> &mdash; no distributed transaction needed!
+        Press <strong>Auto Demo</strong> for a guided walkthrough.
+    </div>
+
+    <!-- SAGA STEPS -->
+    <div class="saga-steps">
+        <div class="ss-title">Saga Steps</div>
+        <div class="step-row" id="step1">
+            <div class="step-num pending" id="step1Num">1</div>
+            <div class="step-text" id="step1Text">Order Service: create order (PENDING)</div>
+        </div>
+        <div class="step-row" id="step2">
+            <div class="step-num pending" id="step2Num">2</div>
+            <div class="step-text" id="step2Text">Order Service: publish OrderCreated event</div>
+        </div>
+        <div class="step-row" id="step3">
+            <div class="step-num pending" id="step3Num">3</div>
+            <div class="step-text" id="step3Text">Customer Service: check credit &amp; reserve</div>
+        </div>
+        <div class="step-row" id="step4">
+            <div class="step-num pending" id="step4Num">4</div>
+            <div class="step-text" id="step4Text">Customer Service: publish CreditReservationResult</div>
+        </div>
+        <div class="step-row" id="step5">
+            <div class="step-num pending" id="step5Num">5</div>
+            <div class="step-text" id="step5Text">Order Service: update order to APPROVED / REJECTED</div>
+        </div>
+    </div>
+
+    <!-- ORDER SERVICE | RABBITMQ | CUSTOMER SERVICE -->
+    <div class="saga-row">
+
+        <!-- ORDER SERVICE -->
+        <div class="panel" id="panelOrder">
+            <div class="panel-header">
+                <h2 class="order-c">Order Service (port 8081)</h2>
+            </div>
+            <div class="panel-body">
+                <div style="font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Orders</div>
+                <div id="orderList">
+                    <div style="font-size:0.78rem;color:#475569;">No orders yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MESSAGE FLOW -->
+        <div class="msg-flow">
+            <div class="mq-icon">
+                <div class="label">Message Broker</div>
+                <div class="name">RabbitMQ</div>
+            </div>
+            <div class="arrow">&darr; &uarr;</div>
+            <div id="msgBubbles"></div>
+        </div>
+
+        <!-- CUSTOMER SERVICE -->
+        <div class="panel" id="panelCustomer">
+            <div class="panel-header">
+                <h2 class="customer-c">Customer Service (port 8082)</h2>
+            </div>
+            <div class="panel-body">
+                <div style="font-size:0.75rem;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Customers</div>
+                <div id="customerList">
+                    <div style="font-size:0.78rem;color:#475569;">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <div class="controls-row">
+            <button class="btn btn-auto" id="btnAuto" onclick="demo.autoDemo()">&#127916; Auto Demo</button>
+            <button class="btn btn-reset" onclick="demo.reset()">&#8634; Reset</button>
+        </div>
+        <div class="controls-row">
+            <span class="scenario-label">Manual:</span>
+            <button class="btn btn-order" id="btnAlice200" onclick="demo.createOrder(1, 200)">Alice &euro;200 (OK)</button>
+            <button class="btn btn-order" id="btnAlice800" onclick="demo.createOrder(1, 800)">Alice &euro;800 (OK)</button>
+            <button class="btn btn-reject" id="btnBob600" onclick="demo.createOrder(2, 600)">Bob &euro;600 (Reject!)</button>
+        </div>
+    </div>
+
+    <!-- LOG -->
+    <div class="log-box">
+        <div class="log-header">
+            <h3>Event Log</h3>
+            <button class="btn btn-reset" style="padding:4px 10px;font-size:0.72rem;" onclick="document.getElementById('logContent').innerHTML=''">Clear</button>
+        </div>
+        <div class="log-content" id="logContent"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    let autoDemoRunning = false;
+    let customerPollTimer = null;
+
+    const API = '/api/proxy';
+
+    /* ===================== CUSTOMER POLLING ===================== */
+
+    function startCustomerPoll() {
+        pollCustomers();
+        customerPollTimer = setInterval(pollCustomers, 2000);
+    }
+
+    async function pollCustomers() {
+        try {
+            const res = await fetch(`${API}/customers`);
+            if (!res.ok) return;
+            const data = await res.json();
+            renderCustomers(data);
+        } catch (e) { /* ignore */ }
+    }
+
+    function renderCustomers(customers) {
+        const c = document.getElementById('customerList');
+        c.innerHTML = '';
+        customers.forEach(cust => {
+            const used = cust.creditReserved || 0;
+            const limit = cust.creditLimit || 1;
+            const pct = Math.min((used / limit) * 100, 100);
+            const available = limit - used;
+            const el = document.createElement('div');
+            el.className = 'customer-card';
+            el.innerHTML =
+                `<div class="cc-name">${cust.name} (ID: ${cust.id})</div>` +
+                `<div class="credit-bar">` +
+                    `<div class="cb-used" style="width:${pct}%"></div>` +
+                    `<div class="cb-label">\u20AC${used.toFixed(0)} / \u20AC${limit.toFixed(0)} used</div>` +
+                `</div>` +
+                `<div class="cc-detail">Limit: <strong>\u20AC${limit.toFixed(2)}</strong> | ` +
+                `Reserved: <strong>\u20AC${used.toFixed(2)}</strong> | ` +
+                `Available: <strong>\u20AC${available.toFixed(2)}</strong></div>`;
+            c.appendChild(el);
+        });
+    }
+
+    /* ===================== ORDER LIFECYCLE ===================== */
+
+    async function executeOrder(customerId, amount) {
+        resetSteps();
+        const customerName = customerId === 1 ? 'Alice' : 'Bob';
+
+        // STEP 1: Create order
+        setStep(1, 'active');
+        document.getElementById('panelOrder').classList.add('active');
+        log('order', `Creating order: customer=<span class="hl">${customerName}</span>, total=<span class="hl">\u20AC${amount}</span>`);
+
+        let orderId;
+        try {
+            const res = await postJson(`${API}/orders`, { customerId, orderTotal: amount });
+            orderId = res.id;
+            addOrderCard(orderId, customerName, amount, 'PENDING');
+            setStep(1, 'done');
+            log('order', `Order <span class="hl">#${orderId}</span> created &mdash; status: <span class="hl">PENDING</span>`);
+        } catch (e) {
+            setStep(1, 'fail');
+            log('order', `<span class="err">Error creating order: ${e.message}</span>`);
+            return;
+        }
+        await sleep(800);
+
+        // STEP 2: Event published (happens automatically in Order Service)
+        setStep(2, 'active');
+        addMsgBubble('OrderCreated', 'outgoing');
+        log('saga', `OrderCreated event published &rarr; RabbitMQ`);
+        await sleep(600);
+        setStep(2, 'done');
+
+        // STEP 3: Customer Service processes
+        setStep(3, 'active');
+        document.getElementById('panelOrder').classList.remove('active');
+        document.getElementById('panelCustomer').classList.add('active');
+        log('credit', `Customer Service received event &mdash; checking credit for <span class="hl">${customerName}</span>...`);
+        await sleep(1200);
+
+        // STEP 4: Credit result published
+        setStep(3, 'done');
+        setStep(4, 'active');
+
+        // Poll order to see result
+        let finalStatus = 'PENDING';
+        const maxPolls = 10;
+        for (let i = 0; i < maxPolls; i++) {
+            await sleep(600);
+            try {
+                const res = await fetch(`${API}/orders/${orderId}`);
+                const order = await res.json();
+                if (order.status !== 'PENDING') {
+                    finalStatus = order.status;
+                    break;
+                }
+            } catch (e) { /* retry */ }
+        }
+
+        const approved = finalStatus === 'APPROVED';
+        addMsgBubble(approved ? 'Credit OK' : 'Credit DENIED', approved ? 'incoming-ok' : 'incoming-fail');
+        if (approved) {
+            log('credit', `Credit reserved! <span class="ok">APPROVED</span>`);
+        } else {
+            log('credit', `Insufficient credit! <span class="err">REJECTED</span>`);
+        }
+        setStep(4, 'done');
+        document.getElementById('panelCustomer').classList.remove('active');
+        await sleep(600);
+
+        // STEP 5: Order updated
+        setStep(5, 'active');
+        document.getElementById('panelOrder').classList.add('active');
+        await sleep(500);
+
+        updateOrderCard(orderId, finalStatus);
+        setStep(5, approved ? 'done' : 'fail');
+        document.getElementById('panelOrder').classList.remove('active');
+        document.getElementById('panelOrder').classList.add(approved ? 'success' : 'rejected');
+
+        if (approved) {
+            log('saga', `Saga complete: Order #${orderId} <span class="ok">APPROVED</span>`);
+        } else {
+            log('saga', `Saga complete: Order #${orderId} <span class="err">REJECTED</span>`);
+        }
+
+        // Refresh customers
+        await pollCustomers();
+
+        // Remove panel highlight after a moment
+        setTimeout(() => {
+            document.getElementById('panelOrder').classList.remove('success', 'rejected');
+        }, 3000);
+
+        return { orderId, approved };
+    }
+
+    /* ===================== UI HELPERS ===================== */
+
+    function addOrderCard(id, customer, amount, status) {
+        const c = document.getElementById('orderList');
+        // Remove "No orders" message
+        if (c.querySelector('div:not(.order-card)')) c.innerHTML = '';
+        const el = document.createElement('div');
+        el.className = 'order-card ' + status.toLowerCase();
+        el.id = `order-${id}`;
+        el.innerHTML =
+            `<div class="oc-header">` +
+                `<span class="oc-id">Order #${id}</span>` +
+                `<span class="order-badge ${status.toLowerCase()}">${status}</span>` +
+            `</div>` +
+            `<div class="oc-detail">Customer: <strong>${customer}</strong> | Total: <strong>\u20AC${amount.toFixed(2)}</strong></div>`;
+        c.insertBefore(el, c.firstChild);
+    }
+
+    function updateOrderCard(id, status) {
+        const el = document.getElementById(`order-${id}`);
+        if (!el) return;
+        el.className = 'order-card ' + status.toLowerCase();
+        el.querySelector('.order-badge').textContent = status;
+        el.querySelector('.order-badge').className = 'order-badge ' + status.toLowerCase();
+    }
+
+    function addMsgBubble(text, cls) {
+        const c = document.getElementById('msgBubbles');
+        const el = document.createElement('div');
+        el.className = 'msg-bubble ' + cls;
+        el.textContent = text;
+        c.insertBefore(el, c.firstChild);
+        while (c.children.length > 6) c.removeChild(c.lastChild);
+    }
+
+    function resetSteps() {
+        for (let i = 1; i <= 5; i++) {
+            setStep(i, 'pending');
+        }
+    }
+
+    function setStep(n, state) {
+        const row = document.getElementById(`step${n}`);
+        const num = document.getElementById(`step${n}Num`);
+        const text = document.getElementById(`step${n}Text`);
+        row.className = 'step-row' + (state !== 'pending' ? ' ' + (state === 'fail' ? 'fail' : state === 'done' ? 'done' : 'active') : '');
+        num.className = 'step-num ' + (state === 'fail' ? 'fail' : state);
+        if (state === 'done') num.textContent = '\u2713';
+        else if (state === 'fail') num.textContent = '\u2717';
+        else num.textContent = n;
+        text.className = 'step-text' + (state !== 'pending' ? ' ' + (state === 'fail' ? 'fail' : state) : '');
+    }
+
+    function setExplanation(type, html) {
+        const el = document.getElementById('explanation');
+        el.className = 'explanation ' + type;
+        el.innerHTML = html;
+    }
+
+    function log(tag, message) {
+        const el = document.getElementById('logContent');
+        const entry = document.createElement('div'); entry.className = 'log-entry';
+        const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        entry.innerHTML = `<span class="time">${time}</span><span class="tag ${tag}">${tag.toUpperCase()}</span><span class="msg">${message}</span>`;
+        el.insertBefore(entry, el.firstChild);
+        while (el.children.length > 80) el.removeChild(el.lastChild);
+    }
+
+    async function postJson(url, body) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return res.json();
+    }
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function setButtons(on) {
+        ['btnAuto','btnAlice200','btnAlice800','btnBob600'].forEach(id =>
+            document.getElementById(id).disabled = !on);
+    }
+
+    /* ===================== DEMO CONTROLLER ===================== */
+
+    window.demo = {
+
+        async createOrder(customerId, amount) {
+            setButtons(false);
+            await executeOrder(customerId, amount);
+            setButtons(true);
+        },
+
+        async autoDemo() {
+            if (autoDemoRunning) return;
+            autoDemoRunning = true;
+            setButtons(false);
+
+            // Reset first
+            document.getElementById('orderList').innerHTML = '<div style="font-size:0.78rem;color:#475569;">No orders yet</div>';
+            document.getElementById('msgBubbles').innerHTML = '';
+            document.getElementById('logContent').innerHTML = '';
+            resetSteps();
+
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; Auto Demo started &#9552;&#9552;&#9552;</span>');
+            await sleep(500);
+
+            // Scenario A: Alice places a small order — APPROVED
+            setExplanation('info',
+                '<strong>Scenario A: Order within credit limit.</strong> ' +
+                'Alice (credit limit \u20AC1000) places an order for \u20AC200. ' +
+                'The Customer Service has enough credit &rarr; order should be <strong>APPROVED</strong>.');
+            log('sys', 'Scenario A: Alice orders \u20AC200 (within credit limit)');
+            await sleep(500);
+            await executeOrder(1, 200);
+            await sleep(2000);
+
+            // Scenario B: Bob places an order exceeding credit — REJECTED
+            setExplanation('danger',
+                '<strong>Scenario B: Order exceeds credit limit!</strong> ' +
+                'Bob (credit limit \u20AC500) places an order for \u20AC600. ' +
+                'Insufficient credit &rarr; order should be <strong>REJECTED</strong>. No credit reserved!');
+            log('sys', 'Scenario B: Bob orders \u20AC600 (exceeds his \u20AC500 limit!)');
+            await sleep(500);
+            await executeOrder(2, 600);
+            await sleep(2000);
+
+            // Scenario C: Alice places another order — still fits
+            setExplanation('info',
+                '<strong>Scenario C: Second order for Alice.</strong> ' +
+                'Alice already has \u20AC200 reserved. Now she orders \u20AC500 more. ' +
+                'Available credit: \u20AC800 &ge; \u20AC500 &rarr; should be <strong>APPROVED</strong>.');
+            log('sys', 'Scenario C: Alice orders \u20AC500 (200 already reserved, 800 available)');
+            await sleep(500);
+            await executeOrder(1, 500);
+            await sleep(2000);
+
+            // Scenario D: Alice exhausts credit
+            setExplanation('warn',
+                '<strong>Scenario D: Credit exhaustion!</strong> ' +
+                'Alice now has \u20AC700 reserved (200+500). She tries to order \u20AC400 more. ' +
+                'Available: \u20AC300 &lt; \u20AC400 &rarr; should be <strong>REJECTED</strong>!');
+            log('sys', 'Scenario D: Alice orders \u20AC400 (only \u20AC300 available!)');
+            await sleep(500);
+            await executeOrder(1, 400);
+            await sleep(1500);
+
+            setExplanation('success',
+                '<strong>Demo complete!</strong> The Saga pattern: ' +
+                '(1) Each service has its own database &mdash; <strong>no shared DB</strong>. ' +
+                '(2) Services communicate via <strong>asynchronous events</strong> through RabbitMQ. ' +
+                '(3) Orders are created in <strong>PENDING</strong> state and resolved via the saga. ' +
+                '(4) If credit is insufficient, the order is <strong>REJECTED</strong> &mdash; no compensating transaction needed because credit was never reserved. ' +
+                '(5) This is <strong>eventual consistency</strong> &mdash; there is a brief moment where the order is PENDING before the saga resolves.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; Auto Demo complete &#9552;&#9552;&#9552;</span>');
+
+            autoDemoRunning = false;
+            setButtons(true);
+        },
+
+        async reset() {
+            document.getElementById('orderList').innerHTML = '<div style="font-size:0.78rem;color:#475569;">No orders yet</div>';
+            document.getElementById('msgBubbles').innerHTML = '';
+            document.getElementById('logContent').innerHTML = '';
+            resetSteps();
+            document.getElementById('panelOrder').classList.remove('active', 'success', 'rejected');
+            document.getElementById('panelCustomer').classList.remove('active');
+            setExplanation('info',
+                'This demo shows the <strong>Choreography-based Saga pattern</strong>. ' +
+                'The Order Service creates an order in <strong>PENDING</strong> state and publishes an event. ' +
+                'The Customer Service checks credit and publishes the result. ' +
+                'The order is then <strong>APPROVED</strong> or <strong>REJECTED</strong> &mdash; no distributed transaction needed! ' +
+                'Press <strong>Auto Demo</strong> for a guided walkthrough.');
+            log('sys', 'Reset complete. Ready for demo.');
+            await pollCustomers();
+            setButtons(true);
+            autoDemoRunning = false;
+        }
+    };
+
+    log('sys', 'Connected to real services. Ready for demo.');
+    startCustomerPoll();
+})();
+</script>
+</body>
+</html>

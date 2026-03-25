@@ -1,0 +1,31 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 5        # Same small thread pool — but the circuit breaker protects it
+      min-spare: 2
+
+spring:
+  application:
+    name: store-service-cb
+
+supplier:
+  url: http://localhost:8080
+
+# Resilience4j Circuit Breaker configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      supplierService:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 5
+        minimumNumberOfCalls: 3
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+logging:
+  level:
+    com.example.storecb: DEBUG
+    io.github.resilience4j: DEBUG

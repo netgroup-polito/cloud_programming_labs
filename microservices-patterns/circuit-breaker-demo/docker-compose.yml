@@ -1,0 +1,43 @@
+services:
+
+  supplier-service:
+    build: ./supplier-service
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  store-service-no-cb:
+    build: ./store-service-no-cb
+    ports:
+      - "8081:8080"
+    environment:
+      SUPPLIER_URL: http://supplier-service:8080
+    depends_on:
+      supplier-service:
+        condition: service_healthy
+
+  store-service-cb:
+    build: ./store-service-cb
+    ports:
+      - "8082:8080"
+    environment:
+      SUPPLIER_URL: http://supplier-service:8080
+    depends_on:
+      supplier-service:
+        condition: service_healthy
+
+  circuit-breaker-visual:
+    build: ./circuit-breaker-visual
+    ports:
+      - "8090:8090"
+    environment:
+      SUPPLIER_URL: http://supplier-service:8080
+      STORE_NO_CB_URL: http://store-service-no-cb:8080
+      STORE_CB_URL: http://store-service-cb:8080
+    depends_on:
+      supplier-service:
+        condition: service_healthy

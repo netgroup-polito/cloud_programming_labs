@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="it" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit Breaker Pattern - Simulazione Visuale</title>
+    <style>
+        /* ===================== RESET & BASE ===================== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ===================== HEADER ===================== */
+        .header {
+            text-align: center;
+            padding: 24px 20px 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #1e293b;
+        }
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header p { color: #94a3b8; margin-top: 6px; font-size: 0.95rem; }
+        .header .real-badge {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 3px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(34,197,94,0.15);
+            color: #4ade80;
+            border: 1px solid rgba(34,197,94,0.3);
+        }
+
+        /* ===================== SUPPLIER PANEL ===================== */
+        .supplier-panel { max-width: 1200px; margin: 20px auto 0; padding: 0 20px; }
+        .supplier-box {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 12px;
+        }
+        .supplier-box h3 { font-size: 1rem; color: #cbd5e1; display: flex; align-items: center; gap: 8px; }
+        .supplier-status { display: flex; align-items: center; gap: 12px; }
+        .status-badge {
+            padding: 6px 16px; border-radius: 20px; font-weight: 600;
+            font-size: 0.85rem; letter-spacing: 0.5px; transition: all 0.3s ease;
+        }
+        .status-badge.healthy { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .status-badge.slow {
+            background: rgba(239,68,68,0.15); color: #f87171;
+            border: 1px solid rgba(239,68,68,0.3); animation: pulse-red 1.5s ease-in-out infinite;
+        }
+        .status-badge.unknown { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+        @keyframes pulse-red {
+            0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+        .supplier-info { font-size: 0.8rem; color: #64748b; }
+
+        /* ===================== CONNECTION LINES ===================== */
+        .connections { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: center; gap: 40%; }
+        .conn-line { width: 2px; height: 30px; background: #334155; position: relative; }
+        .conn-line::after {
+            content: ''; position: absolute; bottom: -4px; left: -3px;
+            width: 8px; height: 8px; border-left: 2px solid #475569;
+            border-bottom: 2px solid #475569; transform: rotate(-45deg);
+        }
+
+        /* ===================== MAIN COLUMNS ===================== */
+        .main-grid { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; transition: border-color 0.5s ease; }
+        .panel.danger { border-color: #dc2626; }
+        .panel.safe { border-color: #16a34a; }
+        .panel-header { padding: 14px 20px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
+        .panel-header h2 { font-size: 1rem; font-weight: 600; }
+        .panel-header .label-nocb { color: #f87171; }
+        .panel-header .label-cb { color: #38bdf8; }
+        .panel-header .subtitle { font-size: 0.75rem; color: #64748b; }
+        .panel-body { padding: 16px 20px; }
+
+        /* ===================== SERVICE STATUS ===================== */
+        .service-status {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+            padding: 8px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .service-status.ok { background: rgba(34,197,94,0.1); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+        .service-status.down { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); animation: flash 1s ease-in-out infinite; }
+        .service-status.loading { background: rgba(100,116,139,0.1); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.green { background: #4ade80; }
+        .status-dot.red { background: #f87171; }
+        .status-dot.gray { background: #64748b; }
+
+        /* ===================== THREAD POOL ===================== */
+        .section-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+        .thread-pool { display: flex; gap: 8px; margin-bottom: 6px; }
+        .thread-slot {
+            flex: 1; height: 32px; border-radius: 6px; background: #0f172a;
+            border: 2px solid #334155; display: flex; align-items: center;
+            justify-content: center; font-size: 0.7rem; font-weight: 600;
+            color: #475569; transition: all 0.3s ease;
+        }
+        .thread-slot.free { background: #0f172a; border-color: #334155; color: #475569; }
+        .thread-slot.busy { background: rgba(250,204,21,0.1); border-color: #ca8a04; color: #fbbf24; }
+        .thread-slot.stuck {
+            background: rgba(239,68,68,0.15); border-color: #dc2626; color: #f87171;
+            animation: thread-stuck 1s ease-in-out infinite;
+        }
+        @keyframes thread-stuck {
+            0%,100% { background: rgba(239,68,68,0.15); }
+            50% { background: rgba(239,68,68,0.3); }
+        }
+        .thread-counter { font-size: 0.8rem; color: #94a3b8; margin-bottom: 16px; }
+        .thread-counter strong { color: #e2e8f0; }
+        .thread-exhausted {
+            display: none; padding: 8px 12px; background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; color: #f87171;
+            font-size: 0.8rem; font-weight: 600; text-align: center; margin-bottom: 12px;
+            animation: flash 1s ease-in-out infinite;
+        }
+        .thread-exhausted.visible { display: block; }
+        @keyframes flash { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* ===================== CIRCUIT BREAKER STATE ===================== */
+        .cb-section { margin-bottom: 16px; padding: 12px; background: rgba(15,23,42,0.5); border-radius: 8px; }
+        .cb-state-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .cb-badge { padding: 5px 14px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; letter-spacing: 1px; transition: all 0.5s ease; }
+        .cb-badge.closed { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+        .cb-badge.open { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); animation: pulse-red 1.5s ease-in-out infinite; }
+        .cb-badge.half-open { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); animation: pulse-yellow 1.5s ease-in-out infinite; }
+        @keyframes pulse-yellow { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.4); } 50% { box-shadow: 0 0 0 8px rgba(251,191,36,0); } }
+        .cb-detail { font-size: 0.78rem; color: #94a3b8; }
+        .cb-detail strong { color: #cbd5e1; }
+
+        /* ===================== METRICS ===================== */
+        .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+        .metric-card { padding: 10px 12px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b; }
+        .metric-card .label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-card .value { font-size: 1.3rem; font-weight: 700; margin-top: 2px; transition: all 0.3s ease; }
+        .metric-card .value.green { color: #4ade80; }
+        .metric-card .value.red { color: #f87171; }
+        .metric-card .value.blue { color: #60a5fa; }
+        .metric-card .value.yellow { color: #fbbf24; }
+        .metric-card .value.white { color: #e2e8f0; }
+
+        /* ===================== REQUEST LOG (per panel) ===================== */
+        .request-list-container {
+            max-height: 200px; overflow-y: auto; border: 1px solid #334155;
+            border-radius: 8px; background: #0f172a;
+        }
+        .request-list-container::-webkit-scrollbar { width: 4px; }
+        .request-list-container::-webkit-scrollbar-track { background: #0f172a; }
+        .request-list-container::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .request-item {
+            padding: 6px 12px; border-bottom: 1px solid #1e293b; font-size: 0.78rem;
+            display: flex; justify-content: space-between; align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .request-item:last-child { border-bottom: none; }
+        .request-item .req-id { color: #94a3b8; font-weight: 600; width: 36px; }
+        .request-item .req-status { padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.7rem; }
+        .request-item .req-status.ok { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .request-item .req-status.err { background: rgba(239,68,68,0.15); color: #f87171; }
+        .request-item .req-status.fb { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .request-item .req-status.wait { background: rgba(251,191,36,0.15); color: #fbbf24; }
+        .request-item .req-time { color: #64748b; font-size: 0.72rem; }
+
+        /* ===================== CONTROLS ===================== */
+        .controls { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .controls-box {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: center; gap: 12px; flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 8px; font-size: 0.85rem;
+            font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #3b82f6; }
+        .btn-warning { background: #dc2626; color: white; }
+        .btn-warning:hover:not(:disabled) { background: #ef4444; }
+        .btn-success { background: #16a34a; color: white; }
+        .btn-success:hover:not(:disabled) { background: #22c55e; }
+        .btn-secondary { background: #475569; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #64748b; }
+        .btn-auto { background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; }
+        .btn-auto:hover:not(:disabled) { background: linear-gradient(135deg, #8b5cf6, #3b82f6); }
+
+        /* ===================== EXPLANATION BANNER ===================== */
+        .explanation { max-width: 1200px; margin: 0 auto 20px; padding: 0 20px; }
+        .explanation-box {
+            padding: 14px 20px; border-radius: 12px; font-size: 0.85rem;
+            line-height: 1.5; transition: all 0.5s ease; display: none;
+        }
+        .explanation-box.visible { display: block; }
+        .explanation-box.info { background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+        .explanation-box.danger { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+        .explanation-box.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+        .explanation-box strong { color: #e2e8f0; }
+
+        /* ===================== EVENT LOG ===================== */
+        .log-section { max-width: 1200px; margin: 0 auto 30px; padding: 0 20px; }
+        .log-box { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; }
+        .log-header { padding: 10px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .log-header h3 { font-size: 0.9rem; color: #94a3b8; }
+        .log-content {
+            max-height: 200px; overflow-y: auto; padding: 8px 0;
+            font-family: 'JetBrains Mono','Fira Code','Consolas',monospace; font-size: 0.75rem;
+        }
+        .log-content::-webkit-scrollbar { width: 4px; }
+        .log-content::-webkit-scrollbar-track { background: #1e293b; }
+        .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+        .log-entry { padding: 3px 20px; display: flex; gap: 8px; animation: slideIn 0.2s ease; }
+        .log-entry .time { color: #475569; white-space: nowrap; }
+        .log-entry .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600; font-size: 0.68rem; white-space: nowrap; }
+        .log-entry .tag.nocb { background: rgba(248,113,113,0.15); color: #f87171; }
+        .log-entry .tag.cb { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .log-entry .tag.sys { background: rgba(168,85,247,0.15); color: #c084fc; }
+        .log-entry .msg { color: #94a3b8; }
+        .log-entry .msg .ok { color: #4ade80; }
+        .log-entry .msg .err { color: #f87171; }
+        .log-entry .msg .fb { color: #60a5fa; }
+        .log-entry .msg .warn { color: #fbbf24; }
+
+        /* ===================== RESPONSIVE ===================== */
+        @media (max-width: 768px) {
+            .main-grid { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.3rem; }
+            .controls-box { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ==================== HEADER ==================== -->
+<div class="header">
+    <h1>Circuit Breaker Pattern &mdash; Simulazione Visuale</h1>
+    <p>Confronto in tempo reale: Store Service <strong>senza</strong> vs <strong>con</strong> Circuit Breaker</p>
+    <span class="real-badge">SERVIZI REALI &mdash; collegato ai microservizi via REST</span>
+</div>
+
+<!-- ==================== SUPPLIER ==================== -->
+<div class="supplier-panel">
+    <div class="supplier-box">
+        <h3><span style="font-size:1.4rem">&#x1F4E6;</span> Supplier Service (porta 8080)</h3>
+        <div class="supplier-status">
+            <span id="supplierBadge" class="status-badge unknown">Connessione...</span>
+            <span class="supplier-info" id="supplierInfo"></span>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== CONNECTION LINES ==================== -->
+<div class="connections"><div class="conn-line"></div><div class="conn-line"></div></div>
+
+<!-- ==================== EXPLANATION BANNER ==================== -->
+<div class="explanation">
+    <div id="explanation" class="explanation-box info visible">
+        Questa simulazione chiama i <strong>servizi reali</strong> tramite REST.
+        I tempi che vedrai sono autentici. Il Supplier in modalita SLOW impiega 30 secondi reali per rispondere.
+        Premi <strong>Demo Automatica</strong> per una dimostrazione guidata, oppure usa i controlli manuali.
+    </div>
+</div>
+
+<!-- ==================== MAIN PANELS ==================== -->
+<div class="main-grid">
+
+    <!-- LEFT: NO CIRCUIT BREAKER -->
+    <div id="panelNoCb" class="panel">
+        <div class="panel-header">
+            <div>
+                <h2 class="label-nocb">SENZA Circuit Breaker</h2>
+                <span class="subtitle">store-service-no-cb &bull; porta 8081</span>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="service-status loading" id="noCbStatus">
+                <span class="status-dot gray"></span> Connessione al servizio...
+            </div>
+
+            <div class="section-label">Thread Pool (max 5)</div>
+            <div class="thread-pool" id="threadPoolNoCb">
+                <div class="thread-slot free" id="noCb-t0">T1</div>
+                <div class="thread-slot free" id="noCb-t1">T2</div>
+                <div class="thread-slot free" id="noCb-t2">T3</div>
+                <div class="thread-slot free" id="noCb-t3">T4</div>
+                <div class="thread-slot free" id="noCb-t4">T5</div>
+            </div>
+            <div class="thread-counter">Thread in uso: <strong id="noCbThreadCount">0</strong> / 5 &nbsp;|&nbsp; In coda: <strong id="noCbQueued">0</strong></div>
+            <div class="thread-exhausted" id="noCbExhausted">THREAD ESAURITI &mdash; Il servizio non puo accettare nuove richieste!</div>
+
+            <div class="metrics">
+                <div class="metric-card"><div class="label">Successi</div><div class="value green" id="noCbSuccess">0</div></div>
+                <div class="metric-card"><div class="label">Errori / Timeout</div><div class="value red" id="noCbFailure">0</div></div>
+                <div class="metric-card"><div class="label">Tempo medio</div><div class="value white" id="noCbAvgTime">-</div></div>
+                <div class="metric-card"><div class="label">In volo</div><div class="value yellow" id="noCbInFlight">0</div></div>
+            </div>
+
+            <div class="section-label">Richieste</div>
+            <div class="request-list-container" id="noCbRequests"></div>
+        </div>
+    </div>
+
+    <!-- RIGHT: WITH CIRCUIT BREAKER -->
+    <div id="panelCb" class="panel">
+        <div class="panel-header">
+            <div>
+                <h2 class="label-cb">CON Circuit Breaker</h2>
+                <span class="subtitle">store-service-cb &bull; porta 8082</span>
+            </div>
+        </div>
+        <div class="panel-body">
+            <div class="service-status loading" id="cbStatus">
+                <span class="status-dot gray"></span> Connessione al servizio...
+            </div>
+
+            <div class="section-label">Thread Pool (max 5)</div>
+            <div class="thread-pool" id="threadPoolCb">
+                <div class="thread-slot free" id="cb-t0">T1</div>
+                <div class="thread-slot free" id="cb-t1">T2</div>
+                <div class="thread-slot free" id="cb-t2">T3</div>
+                <div class="thread-slot free" id="cb-t3">T4</div>
+                <div class="thread-slot free" id="cb-t4">T5</div>
+            </div>
+            <div class="thread-counter">Thread in uso: <strong id="cbThreadCount">0</strong> / 5</div>
+            <div class="thread-exhausted" id="cbExhausted">THREAD ESAURITI!</div>
+
+            <!-- Circuit Breaker State -->
+            <div class="cb-section">
+                <div class="section-label">Stato Circuit Breaker (da /store/health)</div>
+                <div class="cb-state-row">
+                    <span id="cbBadge" class="cb-badge closed">CLOSED</span>
+                    <span class="cb-detail">Failure rate: <strong id="cbFailureRate">-</strong></span>
+                </div>
+                <div class="cb-detail" style="margin-top:4px;">
+                    Chiamate: <strong id="cbBuffered">0</strong> buffered |
+                    <span style="color:#4ade80" id="cbSuccessful">0</span> ok |
+                    <span style="color:#f87171" id="cbFailed">0</span> fail |
+                    <span style="color:#60a5fa" id="cbNotPermitted">0</span> blocked
+                </div>
+                <div class="cb-detail" style="margin-top:4px;">
+                    <span id="cbTransitionInfo">Configurazione: soglia 50%, finestra 5, attesa 15s</span>
+                </div>
+            </div>
+
+            <div class="metrics">
+                <div class="metric-card"><div class="label">Successi</div><div class="value green" id="cbSuccess">0</div></div>
+                <div class="metric-card"><div class="label">Errori / Timeout</div><div class="value red" id="cbFailure">0</div></div>
+                <div class="metric-card"><div class="label">Fallback (cache)</div><div class="value blue" id="cbFallback">0</div></div>
+                <div class="metric-card"><div class="label">Tempo medio</div><div class="value white" id="cbAvgTime">-</div></div>
+            </div>
+
+            <div class="section-label">Richieste</div>
+            <div class="request-list-container" id="cbRequests"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ==================== CONTROLS ==================== -->
+<div class="controls">
+    <div class="controls-box">
+        <button class="btn btn-primary" id="btnSingle" onclick="demo.sendSingle()">&#9654; Singola Richiesta</button>
+        <button class="btn btn-primary" id="btnBurst" onclick="demo.sendBurst(10)">&#9654;&#9654; Invia Raffica (10)</button>
+        <button class="btn btn-warning" id="btnFault" onclick="demo.toggleSupplier()">&#9888; Guasto Supplier</button>
+        <button class="btn btn-auto" id="btnAuto" onclick="demo.autoDemo()">&#127916; Demo Automatica</button>
+        <button class="btn btn-secondary" id="btnReset" onclick="demo.reset()">&#8634; Reset</button>
+    </div>
+</div>
+
+<!-- ==================== LOG ==================== -->
+<div class="log-section">
+    <div class="log-box">
+        <div class="log-header">
+            <h3>Log Eventi</h3>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="demo.clearLog()">Pulisci</button>
+        </div>
+        <div class="log-content" id="logContent"></div>
+    </div>
+</div>
+
+<!-- ==================== JAVASCRIPT ==================== -->
+<script>
+(function() {
+    'use strict';
+
+    /* ===================== STATE ===================== */
+    let requestCounter = 0;
+    let supplierMode = 'UNKNOWN';
+    let autoDemoRunning = false;
+    let healthPollTimer = null;
+
+    const stats = {
+        noCb: { success: 0, failure: 0, totalTime: 0, count: 0, inFlight: 0 },
+        cb:   { success: 0, failure: 0, fallback: 0, totalTime: 0, count: 0, inFlight: 0 }
+    };
+
+    /* ===================== API ENDPOINTS (proxy) ===================== */
+    const API = {
+        supplier:  { status: '/api/proxy/supplier/status', simulate: m => `/api/proxy/supplier/simulate/${m}` },
+        noCb:      { products: '/api/proxy/no-cb/products', health: '/api/proxy/no-cb/health' },
+        cb:        { products: '/api/proxy/cb/products',    health: '/api/proxy/cb/health' }
+    };
+
+    /* ===================== HEALTH POLLING ===================== */
+    function startPolling() {
+        pollHealth();
+        healthPollTimer = setInterval(pollHealth, 2000);
+    }
+
+    async function pollHealth() {
+        // Poll supplier status
+        try {
+            const res = await fetchWithTimeout(API.supplier.status, 2500);
+            const data = await res.json();
+            supplierMode = data.mode || 'UNKNOWN';
+            updateSupplierUI();
+        } catch (e) {
+            supplierMode = 'UNKNOWN';
+            updateSupplierUI();
+        }
+
+        // Poll store-no-cb health
+        try {
+            const res = await fetchWithTimeout(API.noCb.health, 2500);
+            if (res.ok) {
+                setServiceStatus('noCb', 'ok', 'Servizio operativo');
+            } else {
+                setServiceStatus('noCb', 'down', 'Servizio non risponde (thread esauriti?)');
+            }
+        } catch (e) {
+            if (stats.noCb.inFlight > 0) {
+                setServiceStatus('noCb', 'down', 'NON RISPONDE &mdash; thread bloccati dal supplier lento!');
+            } else {
+                setServiceStatus('noCb', 'down', 'Servizio non raggiungibile');
+            }
+        }
+
+        // Poll store-cb health
+        try {
+            const res = await fetchWithTimeout(API.cb.health, 2500);
+            if (res.ok) {
+                const data = await res.json();
+                setServiceStatus('cb', 'ok', 'Servizio operativo');
+                updateCBFromHealth(data);
+            } else {
+                setServiceStatus('cb', 'down', 'Servizio non risponde');
+            }
+        } catch (e) {
+            setServiceStatus('cb', 'down', 'Servizio non raggiungibile');
+        }
+    }
+
+    function updateSupplierUI() {
+        const badge = document.getElementById('supplierBadge');
+        const info = document.getElementById('supplierInfo');
+        if (supplierMode === 'HEALTHY') {
+            badge.textContent = 'HEALTHY';
+            badge.className = 'status-badge healthy';
+            info.textContent = 'Risposta: ~300ms';
+        } else if (supplierMode === 'SLOW') {
+            badge.textContent = 'SLOW (30s delay)';
+            badge.className = 'status-badge slow';
+            info.textContent = 'Risposta: 30.000ms!';
+        } else {
+            badge.textContent = 'Connessione...';
+            badge.className = 'status-badge unknown';
+            info.textContent = '';
+        }
+    }
+
+    function setServiceStatus(prefix, state, html) {
+        const el = document.getElementById(`${prefix}Status`);
+        el.className = 'service-status ' + (state === 'ok' ? 'ok' : state === 'down' ? 'down' : 'loading');
+        const dotColor = state === 'ok' ? 'green' : state === 'down' ? 'red' : 'gray';
+        el.innerHTML = `<span class="status-dot ${dotColor}"></span> ${html}`;
+    }
+
+    function updateCBFromHealth(data) {
+        if (!data.circuitBreaker || data.circuitBreaker === 'NONE') return;
+        const cb = data.circuitBreaker;
+
+        // State badge
+        const badge = document.getElementById('cbBadge');
+        const state = cb.state || 'CLOSED';
+        if (state === 'CLOSED') {
+            badge.textContent = 'CLOSED';
+            badge.className = 'cb-badge closed';
+        } else if (state === 'OPEN') {
+            badge.textContent = 'OPEN';
+            badge.className = 'cb-badge open';
+        } else if (state === 'HALF_OPEN') {
+            badge.textContent = 'HALF-OPEN';
+            badge.className = 'cb-badge half-open';
+        }
+
+        // Metrics
+        document.getElementById('cbFailureRate').textContent = cb.failureRate || '-';
+        document.getElementById('cbBuffered').textContent = cb.bufferedCalls || 0;
+        document.getElementById('cbSuccessful').textContent = cb.successfulCalls || 0;
+        document.getElementById('cbFailed').textContent = cb.failedCalls || 0;
+        document.getElementById('cbNotPermitted').textContent = cb.notPermittedCalls || 0;
+
+        // Transition info
+        const info = document.getElementById('cbTransitionInfo');
+        switch (state) {
+            case 'CLOSED':
+                info.textContent = 'Configurazione: soglia 50%, finestra 5, attesa 15s';
+                break;
+            case 'OPEN':
+                info.textContent = 'Circuito APERTO: tutte le richieste ricevono fallback immediato. Transizione a HALF-OPEN tra 15s...';
+                break;
+            case 'HALF_OPEN':
+                info.textContent = 'Test in corso: 2 richieste di prova consentite per verificare se il Supplier e tornato operativo...';
+                break;
+        }
+    }
+
+    /* ===================== SEND REQUESTS ===================== */
+    async function sendToService(prefix, reqId) {
+        const url = prefix === 'noCb' ? API.noCb.products : API.cb.products;
+
+        stats[prefix].inFlight++;
+        updateThreadPoolUI(prefix);
+        addRequest(prefix, reqId, 'wait', 'Chiamata in corso...');
+
+        try {
+            const res = await fetch(url); // no timeout — let real timing happen
+            const data = await res.json();
+            const elapsed = data.responseTime || 0;
+
+            stats[prefix].inFlight--;
+
+            if (data.success) {
+                if (data.fallback) {
+                    stats[prefix].fallback = (stats[prefix].fallback || 0) + 1;
+                    updateRequest(prefix, reqId, 'fb', `Fallback (${elapsed}ms) — dati dalla cache`);
+                    log(prefix === 'noCb' ? 'nocb' : 'cb',
+                        `#${reqId} &rarr; CB OPEN &rarr; <span class="fb">Fallback ${elapsed}ms</span>`);
+                } else {
+                    stats[prefix].success++;
+                    updateRequest(prefix, reqId, 'ok', `OK (${elapsed}ms)`);
+                    log(prefix === 'noCb' ? 'nocb' : 'cb',
+                        `#${reqId} &rarr; Supplier &rarr; <span class="ok">${elapsed}ms OK</span>`);
+                }
+            } else {
+                stats[prefix].failure++;
+                updateRequest(prefix, reqId, 'err', `Errore (${elapsed}ms) — ${data.error || 'timeout'}`);
+                log(prefix === 'noCb' ? 'nocb' : 'cb',
+                    `#${reqId} &rarr; <span class="err">ERRORE ${elapsed}ms</span> (${data.error || ''})`);
+            }
+
+            stats[prefix].totalTime += elapsed;
+            stats[prefix].count++;
+        } catch (e) {
+            stats[prefix].inFlight--;
+            stats[prefix].failure++;
+            stats[prefix].count++;
+            updateRequest(prefix, reqId, 'err', 'Errore di rete');
+            log(prefix === 'noCb' ? 'nocb' : 'cb',
+                `#${reqId} &rarr; <span class="err">Errore di rete</span>`);
+        }
+
+        updateThreadPoolUI(prefix);
+        updateStatsUI(prefix);
+    }
+
+    /* ===================== UI UPDATES ===================== */
+    function updateThreadPoolUI(prefix) {
+        const inFlight = stats[prefix].inFlight;
+        const busyCount = Math.min(inFlight, 5);
+        const queueCount = Math.max(inFlight - 5, 0);
+
+        const isStuck = supplierMode === 'SLOW' && inFlight > 0;
+
+        for (let i = 0; i < 5; i++) {
+            const el = document.getElementById(`${prefix}-t${i}`);
+            if (i < busyCount) {
+                el.className = 'thread-slot ' + (isStuck && prefix === 'noCb' ? 'stuck' : 'busy');
+            } else {
+                el.className = 'thread-slot free';
+            }
+        }
+
+        document.getElementById(`${prefix}ThreadCount`).textContent = busyCount;
+        if (prefix === 'noCb') {
+            document.getElementById('noCbQueued').textContent = queueCount;
+        }
+        const inFlightEl = document.getElementById(`${prefix}InFlight`);
+        if (inFlightEl) inFlightEl.textContent = inFlight;
+
+        const exhausted = document.getElementById(`${prefix}Exhausted`);
+        exhausted.classList.toggle('visible', busyCount >= 5);
+
+        const panel = document.getElementById(prefix === 'noCb' ? 'panelNoCb' : 'panelCb');
+        panel.classList.toggle('danger', busyCount >= 5 && isStuck);
+    }
+
+    function updateStatsUI(prefix) {
+        const s = stats[prefix];
+        document.getElementById(`${prefix}Success`).textContent = s.success;
+        document.getElementById(`${prefix}Failure`).textContent = s.failure;
+        if (prefix === 'cb') {
+            document.getElementById('cbFallback').textContent = s.fallback || 0;
+        }
+        const avg = s.count > 0 ? Math.round(s.totalTime / s.count) : 0;
+        document.getElementById(`${prefix}AvgTime`).textContent = s.count > 0 ? formatTime(avg) : '-';
+    }
+
+    function formatTime(ms) {
+        if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+        return ms + 'ms';
+    }
+
+    function addRequest(prefix, id, status, text) {
+        const container = document.getElementById(`${prefix}Requests`);
+        const item = document.createElement('div');
+        item.className = 'request-item';
+        item.id = `${prefix}-req-${id}`;
+        item.innerHTML = `
+            <span class="req-id">#${id}</span>
+            <span class="req-status ${status}">${statusLabel(status)}</span>
+            <span class="req-time">${text}</span>`;
+        container.insertBefore(item, container.firstChild);
+        while (container.children.length > 30) container.removeChild(container.lastChild);
+    }
+
+    function updateRequest(prefix, id, status, text) {
+        const item = document.getElementById(`${prefix}-req-${id}`);
+        if (!item) return;
+        item.querySelector('.req-status').className = 'req-status ' + status;
+        item.querySelector('.req-status').textContent = statusLabel(status);
+        item.querySelector('.req-time').textContent = text;
+    }
+
+    function statusLabel(s) {
+        switch (s) {
+            case 'ok': return 'OK';
+            case 'err': return 'ERRORE';
+            case 'fb': return 'FALLBACK';
+            case 'wait': return 'IN CORSO';
+            default: return s.toUpperCase();
+        }
+    }
+
+    /* ===================== LOGGING ===================== */
+    function log(tag, message) {
+        const el = document.getElementById('logContent');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        const time = new Date().toLocaleTimeString('it-IT', { hour12: false });
+        const tagMap = { nocb: ['nocb','NO-CB'], cb: ['cb','CB'], sys: ['sys','SYS'] };
+        const [cls, label] = tagMap[tag] || ['sys','SYS'];
+        entry.innerHTML = `<span class="time">${time}</span><span class="tag ${cls}">${label}</span><span class="msg">${message}</span>`;
+        el.insertBefore(entry, el.firstChild);
+        while (el.children.length > 100) el.removeChild(el.lastChild);
+    }
+
+    /* ===================== UTILITY ===================== */
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function fetchWithTimeout(url, ms) {
+        return fetch(url, { signal: AbortSignal.timeout(ms) });
+    }
+
+    function setButtonsEnabled(enabled) {
+        ['btnSingle','btnBurst','btnFault','btnAuto'].forEach(id => {
+            document.getElementById(id).disabled = !enabled;
+        });
+    }
+
+    function showExplanation(type, html) {
+        const el = document.getElementById('explanation');
+        el.className = `explanation-box ${type} visible`;
+        el.innerHTML = html;
+    }
+
+    /* ===================== DEMO CONTROLLER ===================== */
+    window.demo = {
+
+        async sendSingle() {
+            requestCounter++;
+            const id = requestCounter;
+            log('sys', `Invio richiesta #${id} a entrambi i servizi...`);
+            await Promise.all([
+                sendToService('noCb', id),
+                sendToService('cb', id)
+            ]);
+        },
+
+        async sendBurst(count) {
+            setButtonsEnabled(false);
+            log('sys', `Invio raffica di <span class="warn">${count} richieste</span> a entrambi i servizi...`);
+            const promises = [];
+            for (let i = 0; i < count; i++) {
+                requestCounter++;
+                const id = requestCounter;
+                promises.push(sendToService('noCb', id));
+                promises.push(sendToService('cb', id));
+                await sleep(100); // leggero ritardo tra richieste
+            }
+            await Promise.all(promises);
+            setButtonsEnabled(true);
+            log('sys', 'Raffica completata');
+        },
+
+        async toggleSupplier() {
+            const newMode = supplierMode === 'SLOW' ? 'healthy' : 'slow';
+            try {
+                const res = await fetch(API.supplier.simulate(newMode), { method: 'POST' });
+                const data = await res.json();
+                supplierMode = data.currentMode || newMode.toUpperCase();
+                updateSupplierUI();
+                updateFaultButton();
+
+                if (supplierMode === 'SLOW') {
+                    log('sys', `Supplier &rarr; <span class="err">SLOW</span> (ritardo 30 secondi reali!)`);
+                    showExplanation('danger',
+                        '<strong>Guasto simulato!</strong> Il Supplier ora impiega 30 secondi reali per rispondere. ' +
+                        'Invia una raffica per vedere i thread bloccarsi (senza CB) vs il Circuit Breaker che si apre (con CB).');
+                } else {
+                    log('sys', `Supplier &rarr; <span class="ok">HEALTHY</span> (ripristinato)`);
+                    showExplanation('success',
+                        '<strong>Supplier ripristinato!</strong> Le risposte tornano a ~300ms. ' +
+                        'Il Circuit Breaker passera a HALF-OPEN, testera il servizio, e tornera a CLOSED.');
+                }
+            } catch (e) {
+                log('sys', '<span class="err">Errore nel cambio modalita del supplier</span>');
+            }
+        },
+
+        async autoDemo() {
+            if (autoDemoRunning) return;
+            autoDemoRunning = true;
+            setButtonsEnabled(false);
+            document.getElementById('btnAuto').disabled = true;
+
+            // Reset first
+            await this.doReset();
+            await sleep(1000);
+
+            // === PHASE 1: Normal operation ===
+            showExplanation('info',
+                '<strong>Fase 1 — Operazione normale.</strong> Il Supplier e sano. ' +
+                'Invio 3 richieste a entrambi i servizi. Noterai tempi di risposta simili (~300ms).');
+            log('sys', '<span class="ok">═══ FASE 1: Operazione normale ═══</span>');
+
+            for (let i = 0; i < 3; i++) {
+                requestCounter++;
+                const id = requestCounter;
+                sendToService('noCb', id);
+                sendToService('cb', id);
+                await sleep(500);
+            }
+            await sleep(2000);
+
+            // === PHASE 2: Introduce failure ===
+            showExplanation('danger',
+                '<strong>Fase 2 — Guasto del Supplier!</strong> Attivo la modalita SLOW (30s di ritardo). ' +
+                'Ora invio 8 richieste simultanee. Osserva cosa succede ai due servizi...');
+            log('sys', '<span class="err">═══ FASE 2: Guasto del Supplier! ═══</span>');
+
+            try {
+                await fetch(API.supplier.simulate('slow'), { method: 'POST' });
+                supplierMode = 'SLOW';
+                updateSupplierUI();
+                updateFaultButton();
+                log('sys', `Supplier &rarr; <span class="err">SLOW</span> (30 secondi di ritardo)`);
+            } catch (e) {
+                log('sys', '<span class="err">Errore nel cambio modalita</span>');
+                autoDemoRunning = false;
+                setButtonsEnabled(true);
+                return;
+            }
+
+            await sleep(1500);
+
+            // === PHASE 3: Send burst during failure ===
+            showExplanation('danger',
+                '<strong>Fase 3 — Raffica durante il guasto!</strong> ' +
+                '8 richieste inviate. <span style="color:#f87171;">SENZA CB:</span> tutti i thread si bloccheranno per 30s. ' +
+                '<span style="color:#60a5fa;">CON CB:</span> dopo 3 timeout (3s ciascuno), il CB si apre e le richieste successive ricevono fallback istantaneo.');
+            log('sys', '<span class="warn">Invio raffica di 8 richieste durante il guasto...</span>');
+
+            const burstPromises = [];
+            for (let i = 0; i < 8; i++) {
+                requestCounter++;
+                const id = requestCounter;
+                burstPromises.push(sendToService('noCb', id));
+                burstPromises.push(sendToService('cb', id));
+                await sleep(150);
+            }
+
+            // Wait for CB side to complete (should be fast: ~3s for timeouts + instant fallbacks)
+            // The no-CB side will take much longer (30s+)
+            log('sys', 'Attesa risposte... il lato CB sara molto piu veloce!');
+
+            // Wait a bit for the contrast to be visible
+            await sleep(8000);
+
+            showExplanation('info',
+                '<strong>Osserva la differenza!</strong> ' +
+                '<span style="color:#f87171;">SENZA CB:</span> i thread sono tutti bloccati, il servizio non risponde neanche all\'health check. ' +
+                '<span style="color:#60a5fa;">CON CB:</span> il Circuit Breaker si e aperto, le richieste ricevono fallback in millisecondi. ' +
+                'I thread restano liberi!');
+
+            // === PHASE 4: Wait and then restore ===
+            await sleep(5000);
+
+            showExplanation('success',
+                '<strong>Fase 4 — Ripristino del Supplier.</strong> ' +
+                'Riporto il supplier in modalita HEALTHY. Il CB passera a HALF-OPEN dopo 15 secondi, ' +
+                'testera il servizio con 2 richieste, e se hanno successo tornera a CLOSED.');
+            log('sys', '<span class="ok">═══ FASE 4: Ripristino ═══</span>');
+
+            try {
+                await fetch(API.supplier.simulate('healthy'), { method: 'POST' });
+                supplierMode = 'HEALTHY';
+                updateSupplierUI();
+                updateFaultButton();
+                log('sys', `Supplier &rarr; <span class="ok">HEALTHY</span> (ripristinato)`);
+            } catch (e) {}
+
+            // Wait for all pending requests to complete
+            log('sys', 'Attesa completamento richieste pendenti del lato NO-CB...');
+            await Promise.all(burstPromises);
+            log('sys', 'Tutte le richieste completate.');
+
+            // Wait for CB to transition to HALF_OPEN
+            showExplanation('info',
+                '<strong>Attesa transizione CB...</strong> ' +
+                'Il Circuit Breaker attende 15 secondi prima di passare a HALF-OPEN per testare il servizio. ' +
+                'Monitora lo stato del CB nel pannello destro.');
+            log('sys', 'Attesa transizione CB a HALF-OPEN (15 secondi)...');
+            await sleep(16000);
+
+            // === PHASE 5: Test recovery ===
+            showExplanation('info',
+                '<strong>Fase 5 — Test di ripristino.</strong> ' +
+                'Il CB dovrebbe essere in HALF-OPEN. Invio richieste di test. Se hanno successo, il CB torna a CLOSED.');
+            log('sys', '<span class="ok">═══ FASE 5: Test ripristino CB ═══</span>');
+
+            for (let i = 0; i < 3; i++) {
+                requestCounter++;
+                const id = requestCounter;
+                sendToService('noCb', id);
+                sendToService('cb', id);
+                await sleep(800);
+            }
+            await sleep(3000);
+
+            showExplanation('success',
+                '<strong>Demo completata!</strong> Il Circuit Breaker ha: ' +
+                '(1) rilevato il guasto dopo 3 fallimenti, ' +
+                '(2) protetto il servizio bloccando le richieste (OPEN), ' +
+                '(3) fornito risposte di fallback immediate dalla cache, ' +
+                '(4) testato il ripristino (HALF-OPEN), ' +
+                '(5) ripristinato le operazioni normali (CLOSED). ' +
+                'Senza CB, il servizio e rimasto bloccato per tutta la durata del guasto.');
+            log('sys', '<span class="ok">═══ Demo automatica completata ═══</span>');
+
+            autoDemoRunning = false;
+            setButtonsEnabled(true);
+        },
+
+        async doReset() {
+            // Reset supplier to healthy
+            try {
+                await fetch(API.supplier.simulate('healthy'), { method: 'POST' });
+            } catch (e) {}
+            supplierMode = 'HEALTHY';
+            updateSupplierUI();
+            updateFaultButton();
+
+            // Reset UI stats
+            stats.noCb = { success: 0, failure: 0, totalTime: 0, count: 0, inFlight: 0 };
+            stats.cb = { success: 0, failure: 0, fallback: 0, totalTime: 0, count: 0, inFlight: 0 };
+            requestCounter = 0;
+
+            ['noCb','cb'].forEach(prefix => {
+                document.getElementById(`${prefix}Requests`).innerHTML = '';
+                document.getElementById(`${prefix}Success`).textContent = '0';
+                document.getElementById(`${prefix}Failure`).textContent = '0';
+                document.getElementById(`${prefix}AvgTime`).textContent = '-';
+                document.getElementById(`${prefix}InFlight`).textContent = '0';
+                document.getElementById(`${prefix}ThreadCount`).textContent = '0';
+                document.getElementById(`${prefix}Exhausted`).classList.remove('visible');
+                for (let i = 0; i < 5; i++) {
+                    document.getElementById(`${prefix}-t${i}`).className = 'thread-slot free';
+                }
+                const panel = document.getElementById(prefix === 'noCb' ? 'panelNoCb' : 'panelCb');
+                panel.classList.remove('danger','safe');
+            });
+            document.getElementById('noCbQueued').textContent = '0';
+            document.getElementById('cbFallback').textContent = '0';
+        },
+
+        async reset() {
+            await this.doReset();
+            document.getElementById('logContent').innerHTML = '';
+            showExplanation('info',
+                'Questa simulazione chiama i <strong>servizi reali</strong> tramite REST. ' +
+                'I tempi che vedrai sono autentici. Il Supplier in modalita SLOW impiega 30 secondi reali per rispondere. ' +
+                'Premi <strong>Demo Automatica</strong> per una dimostrazione guidata, oppure usa i controlli manuali.');
+            log('sys', 'Simulazione resettata. Servizi reali pronti.');
+        },
+
+        clearLog() {
+            document.getElementById('logContent').innerHTML = '';
+        }
+    };
+
+    function updateFaultButton() {
+        const btn = document.getElementById('btnFault');
+        if (supplierMode === 'SLOW') {
+            btn.textContent = '\u2705 Ripristina Supplier';
+            btn.className = 'btn btn-success';
+        } else {
+            btn.textContent = '\u26A0 Guasto Supplier';
+            btn.className = 'btn btn-warning';
+        }
+    }
+
+    /* ===================== INIT ===================== */
+    log('sys', 'Connessione ai servizi reali in corso...');
+    startPolling();
+
+})();
+</script>
+
+</body>
+</html>

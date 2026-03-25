@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CQRS Pattern - Visual Demo</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f172a; color: #e2e8f0; min-height: 100vh; overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center; padding: 24px 20px 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #1e293b;
+        }
+        .header h1 {
+            font-size: 1.8rem; font-weight: 700;
+            background: linear-gradient(135deg, #38bdf8, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header p { color: #94a3b8; margin-top: 6px; font-size: 0.95rem; }
+        .header .real-badge {
+            display: inline-block; margin-top: 8px; padding: 3px 12px; border-radius: 12px;
+            font-size: 0.75rem; font-weight: 600;
+            background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3);
+        }
+
+        .main-layout { max-width: 1300px; margin: 20px auto; padding: 0 20px; }
+
+        /* ===================== ARCHITECTURE OVERVIEW ===================== */
+        .arch-row {
+            display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px;
+            align-items: start; margin-bottom: 20px;
+        }
+        .panel {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            overflow: hidden; transition: border-color 0.5s ease;
+        }
+        .panel.highlight { border-color: #38bdf8; box-shadow: 0 0 20px rgba(56,189,248,0.15); }
+        .panel-header {
+            padding: 12px 16px; border-bottom: 1px solid #334155;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-header h2 { font-size: 0.95rem; font-weight: 600; }
+        .panel-header .cmd { color: #f97316; }
+        .panel-header .read { color: #38bdf8; }
+        .panel-header .mq { color: #a78bfa; }
+        .panel-body { padding: 14px 16px; }
+
+        .service-card {
+            padding: 10px 14px; background: #0f172a; border-radius: 8px;
+            border: 1px solid #334155; margin-bottom: 8px; transition: all 0.4s ease;
+        }
+        .service-card.active { border-color: #f97316; background: rgba(249,115,22,0.08); }
+        .service-card .svc-name { font-size: 0.82rem; font-weight: 600; color: #cbd5e1; }
+        .service-card .svc-port { font-size: 0.7rem; color: #64748b; }
+        .service-card .svc-status {
+            font-size: 0.72rem; margin-top: 4px; padding: 2px 8px; border-radius: 4px;
+            display: inline-block; font-weight: 600;
+        }
+        .svc-status.idle { background: rgba(100,116,139,0.15); color: #94a3b8; }
+        .svc-status.writing { background: rgba(249,115,22,0.15); color: #fb923c; animation: pulse-orange 1.5s infinite; }
+        .svc-status.done { background: rgba(34,197,94,0.15); color: #4ade80; }
+        @keyframes pulse-orange { 0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.3); } 50% { box-shadow: 0 0 0 6px rgba(249,115,22,0); } }
+
+        /* Event flow center column */
+        .event-flow {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; min-width: 160px; padding: 20px 0;
+        }
+        .event-flow .mq-icon {
+            padding: 12px 20px; background: rgba(167,139,250,0.1); border: 2px solid rgba(167,139,250,0.3);
+            border-radius: 12px; text-align: center; margin-bottom: 12px;
+        }
+        .event-flow .mq-icon .label { font-size: 0.75rem; color: #a78bfa; font-weight: 600; }
+        .event-flow .mq-icon .name { font-size: 0.85rem; color: #c4b5fd; font-weight: 700; }
+        .event-bubble {
+            padding: 6px 12px; background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.3);
+            border-radius: 8px; font-size: 0.72rem; color: #c4b5fd; font-weight: 600;
+            margin: 3px 0; animation: fadeSlide 0.5s ease; max-width: 160px; text-align: center;
+        }
+        @keyframes fadeSlide { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        .arrow { color: #475569; font-size: 1.2rem; margin: 2px 0; }
+
+        /* Read model panel */
+        .read-view {
+            padding: 10px 14px; background: #0f172a; border-radius: 8px;
+            border: 1px solid #334155; font-size: 0.78rem;
+        }
+        .read-view .rv-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1e293b; }
+        .read-view .rv-row:last-child { border-bottom: none; }
+        .read-view .rv-label { color: #64748b; }
+        .read-view .rv-value { color: #e2e8f0; font-weight: 600; }
+        .rv-value.pending { color: #fbbf24; }
+        .rv-value.created { color: #fb923c; }
+        .rv-value.confirmed { color: #4ade80; }
+        .rv-value.accepted { color: #4ade80; }
+        .rv-value.scheduled { color: #60a5fa; }
+        .rv-value.picked_up { color: #818cf8; }
+        .rv-value.delivered { color: #4ade80; }
+        .rv-value.none { color: #475569; }
+
+        .event-history { margin-top: 12px; }
+        .event-history .eh-title { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 600; }
+        .event-list {
+            max-height: 180px; overflow-y: auto; border: 1px solid #334155; border-radius: 6px;
+            background: #0f172a;
+        }
+        .event-list::-webkit-scrollbar { width: 4px; }
+        .event-list::-webkit-scrollbar-track { background: #0f172a; }
+        .event-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .event-item {
+            padding: 5px 10px; border-bottom: 1px solid #1e293b; font-size: 0.72rem;
+            display: flex; gap: 8px; align-items: center; animation: fadeSlide 0.3s ease;
+        }
+        .event-item:last-child { border-bottom: none; }
+        .event-item .ev-type {
+            padding: 2px 6px; border-radius: 3px; font-weight: 600; font-size: 0.65rem;
+            white-space: nowrap;
+        }
+        .ev-type.order { background: rgba(249,115,22,0.15); color: #fb923c; }
+        .ev-type.ticket { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .ev-type.delivery { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .ev-type.accounting { background: rgba(168,85,247,0.15); color: #c084fc; }
+        .event-item .ev-detail { color: #94a3b8; }
+        .event-item .ev-time { color: #475569; font-size: 0.68rem; margin-left: auto; white-space: nowrap; }
+
+        /* ===================== EXPLANATION BANNER ===================== */
+        .explanation {
+            padding: 14px 20px; border-radius: 12px; font-size: 0.85rem;
+            line-height: 1.5; margin-bottom: 16px; transition: all 0.5s ease;
+        }
+        .explanation.info { background: rgba(96,165,250,0.1); border: 1px solid rgba(96,165,250,0.3); color: #93c5fd; }
+        .explanation.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+        .explanation.warn { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: #fde68a; }
+        .explanation strong { color: #e2e8f0; }
+
+        /* ===================== CONTROLS ===================== */
+        .controls {
+            background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 16px;
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+        }
+        .btn {
+            padding: 10px 18px; border: none; border-radius: 8px; font-size: 0.82rem;
+            font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-auto { background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; }
+        .btn-auto:hover:not(:disabled) { background: linear-gradient(135deg, #8b5cf6, #3b82f6); }
+        .btn-step { background: #2563eb; color: white; }
+        .btn-step:hover:not(:disabled) { background: #3b82f6; }
+        .btn-reset { background: #475569; color: white; }
+        .btn-reset:hover:not(:disabled) { background: #64748b; }
+
+        /* ===================== LOG ===================== */
+        .log-box { background: #1e293b; border: 2px solid #334155; border-radius: 12px; overflow: hidden; }
+        .log-header { padding: 10px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+        .log-header h3 { font-size: 0.9rem; color: #94a3b8; }
+        .log-content {
+            max-height: 200px; overflow-y: auto; padding: 8px 0;
+            font-family: 'JetBrains Mono','Fira Code','Consolas',monospace; font-size: 0.75rem;
+        }
+        .log-content::-webkit-scrollbar { width: 4px; }
+        .log-content::-webkit-scrollbar-track { background: #1e293b; }
+        .log-content::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+        .log-entry { padding: 3px 16px; display: flex; gap: 8px; animation: fadeSlide 0.2s ease; }
+        .log-entry .time { color: #475569; white-space: nowrap; }
+        .log-entry .tag { padding: 1px 6px; border-radius: 3px; font-weight: 600; font-size: 0.68rem; white-space: nowrap; }
+        .log-entry .tag.cmd { background: rgba(249,115,22,0.15); color: #fb923c; }
+        .log-entry .tag.evt { background: rgba(167,139,250,0.15); color: #c4b5fd; }
+        .log-entry .tag.qry { background: rgba(56,189,248,0.15); color: #38bdf8; }
+        .log-entry .tag.sys { background: rgba(168,85,247,0.15); color: #c084fc; }
+        .log-entry .msg { color: #94a3b8; }
+        .log-entry .msg .ok { color: #4ade80; }
+        .log-entry .msg .err { color: #f87171; }
+        .log-entry .msg .hl { color: #fbbf24; }
+
+        @media (max-width: 900px) {
+            .arch-row { grid-template-columns: 1fr; }
+            .event-flow { flex-direction: row; flex-wrap: wrap; min-width: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>CQRS Pattern &mdash; Visual Demo</h1>
+    <p>Command Query Responsibility Segregation: separate write models from read models</p>
+    <span class="real-badge">LIVE SERVICES &mdash; connected to real microservices via REST</span>
+</div>
+
+<div class="main-layout">
+
+    <div id="explanation" class="explanation info">
+        This demo shows the <strong>CQRS pattern</strong> in action.
+        <strong>Command side</strong>: 4 services, each with its own PostgreSQL database, publish domain events to RabbitMQ.
+        <strong>Read side</strong>: Order History Service subscribes to all events and maintains a denormalized MongoDB view.
+        Press <strong>Auto Demo</strong> for a guided walkthrough.
+    </div>
+
+    <!-- ARCHITECTURE: COMMAND | RABBITMQ | READ -->
+    <div class="arch-row">
+
+        <!-- COMMAND SIDE -->
+        <div class="panel" id="panelCommand">
+            <div class="panel-header">
+                <h2 class="cmd">COMMAND SIDE (Write)</h2>
+            </div>
+            <div class="panel-body">
+                <div class="service-card" id="svcOrder">
+                    <div class="svc-name">Order Service</div>
+                    <div class="svc-port">port 8081 &bull; PostgreSQL</div>
+                    <div class="svc-status idle" id="svcOrderStatus">Idle</div>
+                </div>
+                <div class="service-card" id="svcTicket">
+                    <div class="svc-name">Ticket Service</div>
+                    <div class="svc-port">port 8082 &bull; PostgreSQL</div>
+                    <div class="svc-status idle" id="svcTicketStatus">Idle</div>
+                </div>
+                <div class="service-card" id="svcDelivery">
+                    <div class="svc-name">Delivery Service</div>
+                    <div class="svc-port">port 8083 &bull; PostgreSQL</div>
+                    <div class="svc-status idle" id="svcDeliveryStatus">Idle</div>
+                </div>
+                <div class="service-card" id="svcAccounting">
+                    <div class="svc-name">Accounting Service</div>
+                    <div class="svc-port">port 8084 &bull; PostgreSQL</div>
+                    <div class="svc-status idle" id="svcAccountingStatus">Idle</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EVENT FLOW -->
+        <div class="event-flow">
+            <div class="mq-icon">
+                <div class="label">Message Broker</div>
+                <div class="name">RabbitMQ</div>
+            </div>
+            <div class="arrow">&darr;</div>
+            <div id="eventBubbles"></div>
+        </div>
+
+        <!-- READ SIDE -->
+        <div class="panel" id="panelRead">
+            <div class="panel-header">
+                <h2 class="read">READ SIDE (Query)</h2>
+            </div>
+            <div class="panel-body">
+                <div class="service-card">
+                    <div class="svc-name">Order History Service</div>
+                    <div class="svc-port">port 8085 &bull; MongoDB (denormalized view)</div>
+                </div>
+                <div class="read-view" id="readView">
+                    <div class="rv-row"><span class="rv-label">Order</span><span class="rv-value none" id="rvOrder">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Customer</span><span class="rv-value" id="rvCustomer">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Items</span><span class="rv-value" id="rvItems">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Total</span><span class="rv-value" id="rvTotal">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Order Status</span><span class="rv-value none" id="rvOrderStatus">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Ticket Status</span><span class="rv-value none" id="rvTicketStatus">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Delivery Status</span><span class="rv-value none" id="rvDeliveryStatus">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Invoice Status</span><span class="rv-value none" id="rvInvoiceStatus">-</span></div>
+                    <div class="rv-row"><span class="rv-label">Last Updated</span><span class="rv-value" id="rvUpdated" style="color:#64748b">-</span></div>
+                </div>
+                <div class="event-history">
+                    <div class="eh-title">Event Trail (from MongoDB)</div>
+                    <div class="event-list" id="eventList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="controls">
+        <button class="btn btn-auto" id="btnAuto" onclick="demo.autoDemo()">&#127916; Auto Demo</button>
+        <button class="btn btn-step" id="btnStep" onclick="demo.nextStep()">&#9654; Next Step</button>
+        <button class="btn btn-reset" onclick="demo.reset()">&#8634; Reset</button>
+    </div>
+
+    <!-- LOG -->
+    <div class="log-box">
+        <div class="log-header">
+            <h3>Event Log</h3>
+            <button class="btn btn-reset" style="padding:4px 10px;font-size:0.72rem;" onclick="document.getElementById('logContent').innerHTML=''">Clear</button>
+        </div>
+        <div class="log-content" id="logContent"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    let currentOrderId = null;
+    let currentTicketId = null;
+    let currentDeliveryId = null;
+    let currentInvoiceId = null;
+    let stepIndex = 0;
+    let autoDemoRunning = false;
+    let readPollTimer = null;
+    let lastKnownUpdate = '';   // track lastUpdated to avoid re-highlighting
+
+    const API = '/api/proxy';
+
+    const STEPS = [
+        { name: 'Create Order',       service: 'Order',      action: createOrder },
+        { name: 'Confirm Order',      service: 'Order',      action: confirmOrder },
+        { name: 'Create Ticket',      service: 'Ticket',     action: createTicket },
+        { name: 'Accept Ticket',      service: 'Ticket',     action: acceptTicket },
+        { name: 'Schedule Delivery',  service: 'Delivery',   action: scheduleDelivery },
+        { name: 'Pickup Delivery',    service: 'Delivery',   action: pickupDelivery },
+        { name: 'Complete Delivery',  service: 'Delivery',   action: completeDelivery },
+        { name: 'Create Invoice',     service: 'Accounting', action: createInvoice },
+    ];
+
+    /* ===================== STEP ACTIONS ===================== */
+
+    async function createOrder() {
+        setSvcStatus('Order', 'writing', 'Writing...');
+        const body = { customerId: 1, customerName: 'Alice', items: '2x Margherita Pizza', totalAmount: 35.00 };
+        log('cmd', `POST /orders &mdash; <span class="hl">${JSON.stringify(body)}</span>`);
+        try {
+            const res = await postJson(`${API}/orders`, body);
+            currentOrderId = res.id;
+            setSvcStatus('Order', 'done', `Order #${res.id} CREATED`);
+            addEventBubble('ORDER_CREATED', 'order');
+            log('evt', `ORDER_CREATED &rarr; <span class="ok">Order #${res.id} created</span>`);
+        } catch (e) {
+            setSvcStatus('Order', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function confirmOrder() {
+        if (!currentOrderId) return;
+        setSvcStatus('Order', 'writing', 'Writing...');
+        log('cmd', `PUT /orders/${currentOrderId}/confirm`);
+        try {
+            await putJson(`${API}/orders/${currentOrderId}/confirm`);
+            setSvcStatus('Order', 'done', `Order #${currentOrderId} CONFIRMED`);
+            addEventBubble('ORDER_CONFIRMED', 'order');
+            log('evt', `ORDER_CONFIRMED &rarr; <span class="ok">Order #${currentOrderId} confirmed</span>`);
+        } catch (e) {
+            setSvcStatus('Order', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function createTicket() {
+        if (!currentOrderId) return;
+        setSvcStatus('Ticket', 'writing', 'Writing...');
+        const body = { orderId: currentOrderId, items: '2x Margherita Pizza' };
+        log('cmd', `POST /tickets &mdash; <span class="hl">${JSON.stringify(body)}</span>`);
+        try {
+            const res = await postJson(`${API}/tickets`, body);
+            currentTicketId = res.id;
+            setSvcStatus('Ticket', 'done', `Ticket #${res.id} CREATED`);
+            addEventBubble('TICKET_CREATED', 'ticket');
+            log('evt', `TICKET_CREATED &rarr; <span class="ok">Ticket #${res.id} for Order #${currentOrderId}</span>`);
+        } catch (e) {
+            setSvcStatus('Ticket', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function acceptTicket() {
+        if (!currentTicketId) return;
+        setSvcStatus('Ticket', 'writing', 'Writing...');
+        log('cmd', `PUT /tickets/${currentTicketId}/accept`);
+        try {
+            await putJson(`${API}/tickets/${currentTicketId}/accept`);
+            setSvcStatus('Ticket', 'done', `Ticket #${currentTicketId} ACCEPTED`);
+            addEventBubble('TICKET_ACCEPTED', 'ticket');
+            log('evt', `TICKET_ACCEPTED &rarr; <span class="ok">Kitchen accepted ticket</span>`);
+        } catch (e) {
+            setSvcStatus('Ticket', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function scheduleDelivery() {
+        if (!currentOrderId) return;
+        setSvcStatus('Delivery', 'writing', 'Writing...');
+        const body = { orderId: currentOrderId, address: 'Via Roma 1, Milano' };
+        log('cmd', `POST /deliveries &mdash; <span class="hl">${JSON.stringify(body)}</span>`);
+        try {
+            const res = await postJson(`${API}/deliveries`, body);
+            currentDeliveryId = res.id;
+            setSvcStatus('Delivery', 'done', `Delivery #${res.id} SCHEDULED`);
+            addEventBubble('DELIVERY_SCHEDULED', 'delivery');
+            log('evt', `DELIVERY_SCHEDULED &rarr; <span class="ok">Delivery scheduled</span>`);
+        } catch (e) {
+            setSvcStatus('Delivery', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function pickupDelivery() {
+        if (!currentDeliveryId) return;
+        setSvcStatus('Delivery', 'writing', 'Writing...');
+        log('cmd', `PUT /deliveries/${currentDeliveryId}/pickup`);
+        try {
+            await putJson(`${API}/deliveries/${currentDeliveryId}/pickup`);
+            setSvcStatus('Delivery', 'done', `Delivery #${currentDeliveryId} PICKED_UP`);
+            addEventBubble('DELIVERY_PICKED_UP', 'delivery');
+            log('evt', `DELIVERY_PICKED_UP &rarr; <span class="ok">Rider picked up order</span>`);
+        } catch (e) {
+            setSvcStatus('Delivery', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function completeDelivery() {
+        if (!currentDeliveryId) return;
+        setSvcStatus('Delivery', 'writing', 'Writing...');
+        log('cmd', `PUT /deliveries/${currentDeliveryId}/deliver`);
+        try {
+            await putJson(`${API}/deliveries/${currentDeliveryId}/deliver`);
+            setSvcStatus('Delivery', 'done', `Delivery #${currentDeliveryId} DELIVERED`);
+            addEventBubble('DELIVERY_DELIVERED', 'delivery');
+            log('evt', `DELIVERY_DELIVERED &rarr; <span class="ok">Order delivered!</span>`);
+        } catch (e) {
+            setSvcStatus('Delivery', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    async function createInvoice() {
+        if (!currentOrderId) return;
+        setSvcStatus('Accounting', 'writing', 'Writing...');
+        const body = { orderId: currentOrderId, amount: 35.00 };
+        log('cmd', `POST /invoices &mdash; <span class="hl">${JSON.stringify(body)}</span>`);
+        try {
+            const res = await postJson(`${API}/invoices`, body);
+            currentInvoiceId = res.id;
+            setSvcStatus('Accounting', 'done', `Invoice #${res.id} CREATED`);
+            addEventBubble('INVOICE_CREATED', 'accounting');
+            log('evt', `INVOICE_CREATED &rarr; <span class="ok">Invoice created for ${"\u20AC"}35.00</span>`);
+        } catch (e) {
+            setSvcStatus('Accounting', 'done', 'Error'); log('cmd', `<span class="err">Error: ${e.message}</span>`);
+        }
+    }
+
+    /* ===================== READ MODEL POLLING ===================== */
+
+    function startReadPoll() {
+        if (readPollTimer) clearInterval(readPollTimer);
+        readPollTimer = setInterval(pollReadModel, 2000);
+    }
+
+    async function pollReadModel() {
+        if (!currentOrderId) return;
+        try {
+            const res = await fetch(`${API}/order-history/${currentOrderId}`);
+            if (!res.ok) return false;
+            const data = await res.json();
+            updateReadView(data);
+            return true;
+        } catch (e) { return false; }
+    }
+
+    /** Poll with retries — waits for event propagation through RabbitMQ → MongoDB */
+    async function pollReadModelWithRetry(maxAttempts, delayMs) {
+        for (let i = 0; i < maxAttempts; i++) {
+            const ok = await pollReadModel();
+            if (ok) return;
+            await sleep(delayMs);
+        }
+    }
+
+    function updateReadView(d) {
+        // Build a fingerprint to detect actual changes — skip DOM rebuild if nothing changed
+        const updateKey = (d.lastUpdated || '') + '|' + (d.events ? d.events.length : 0)
+            + '|' + (d.orderStatus || '') + '|' + (d.ticketStatus || '')
+            + '|' + (d.deliveryStatus || '') + '|' + (d.invoiceStatus || '');
+        if (updateKey === lastKnownUpdate) return;  // nothing changed, skip entirely
+        lastKnownUpdate = updateKey;
+
+        document.getElementById('rvOrder').textContent = `#${d.orderId}`;
+        document.getElementById('rvOrder').className = 'rv-value';
+        document.getElementById('rvCustomer').textContent = d.customerName || '-';
+        document.getElementById('rvItems').textContent = d.items || '-';
+        document.getElementById('rvTotal').textContent = d.totalAmount ? `\u20AC${d.totalAmount.toFixed(2)}` : '-';
+
+        setRvStatus('rvOrderStatus', d.orderStatus);
+        setRvStatus('rvTicketStatus', d.ticketStatus);
+        setRvStatus('rvDeliveryStatus', d.deliveryStatus);
+        setRvStatus('rvInvoiceStatus', d.invoiceStatus);
+
+        document.getElementById('rvUpdated').textContent = d.lastUpdated || '-';
+
+        // Event trail — only rebuilt when data actually changed (checked above)
+        const list = document.getElementById('eventList');
+        list.innerHTML = '';
+        if (d.events && d.events.length) {
+            d.events.slice().reverse().forEach(ev => {
+                const el = document.createElement('div');
+                el.className = 'event-item';
+                const typeClass = ev.serviceName ? ev.serviceName.split('-')[0] : 'order';
+                el.innerHTML = `<span class="ev-type ${typeClass}">${ev.eventType}</span>` +
+                    `<span class="ev-detail">${ev.serviceName || ''}</span>` +
+                    `<span class="ev-time">${ev.timestamp || ''}</span>`;
+                list.appendChild(el);
+            });
+        }
+
+        // Flash highlight briefly
+        document.getElementById('panelRead').classList.add('highlight');
+        setTimeout(() => document.getElementById('panelRead').classList.remove('highlight'), 1500);
+    }
+
+    function setRvStatus(elId, status) {
+        const el = document.getElementById(elId);
+        if (!status) { el.textContent = '-'; el.className = 'rv-value none'; return; }
+        el.textContent = status;
+        el.className = 'rv-value ' + status.toLowerCase();
+    }
+
+    /* ===================== UI HELPERS ===================== */
+
+    function setSvcStatus(svc, state, text) {
+        const el = document.getElementById(`svc${svc}Status`);
+        el.textContent = text;
+        el.className = 'svc-status ' + state;
+        const card = document.getElementById(`svc${svc}`);
+        card.classList.toggle('active', state === 'writing');
+    }
+
+    function addEventBubble(eventType, typeClass) {
+        const container = document.getElementById('eventBubbles');
+        const el = document.createElement('div');
+        el.className = 'event-bubble';
+        el.textContent = eventType;
+        container.insertBefore(el, container.firstChild);
+        while (container.children.length > 8) container.removeChild(container.lastChild);
+    }
+
+    function setExplanation(type, html) {
+        const el = document.getElementById('explanation');
+        el.className = 'explanation ' + type;
+        el.innerHTML = html;
+    }
+
+    function log(tag, message) {
+        const el = document.getElementById('logContent');
+        const entry = document.createElement('div'); entry.className = 'log-entry';
+        const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        entry.innerHTML = `<span class="time">${time}</span><span class="tag ${tag}">${tag.toUpperCase()}</span><span class="msg">${message}</span>`;
+        el.insertBefore(entry, el.firstChild);
+        while (el.children.length > 80) el.removeChild(el.lastChild);
+    }
+
+    async function postJson(url, body) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return res.json();
+    }
+    async function putJson(url) {
+        const res = await fetch(url, { method: 'PUT' });
+        return res.json();
+    }
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function setButtons(on) {
+        document.getElementById('btnAuto').disabled = !on;
+        document.getElementById('btnStep').disabled = !on;
+    }
+
+    /* ===================== DEMO CONTROLLER ===================== */
+
+    window.demo = {
+
+        async nextStep() {
+            if (stepIndex >= STEPS.length) {
+                log('sys', 'All steps completed. Press Reset to start over.');
+                return;
+            }
+            const step = STEPS[stepIndex];
+            setExplanation('info', `<strong>Step ${stepIndex + 1}/${STEPS.length}: ${step.name}</strong> &mdash; ` +
+                `Command sent to <strong>${step.service} Service</strong>. The service writes to its own database ` +
+                `and publishes a domain event to RabbitMQ. Watch the read model update!`);
+            setButtons(false);
+            await step.action();
+            // Retry polling — event needs time to propagate through RabbitMQ → MongoDB
+            await pollReadModelWithRetry(5, 800);
+            stepIndex++;
+            setButtons(true);
+            if (stepIndex >= STEPS.length) {
+                setExplanation('success',
+                    '<strong>All steps complete!</strong> The order has gone through the entire lifecycle. ' +
+                    'Notice how the <strong>Read Side</strong> (right panel) has a denormalized view combining data ' +
+                    'from all 4 command services &mdash; that is the power of CQRS! Each service owns its data, ' +
+                    'but the read model provides a unified view via event projection.');
+            }
+        },
+
+        async autoDemo() {
+            if (autoDemoRunning) return;
+            autoDemoRunning = true;
+            await this.doReset();
+            await sleep(500);
+
+            setExplanation('info',
+                '<strong>Auto Demo</strong> &mdash; Walking through a complete order lifecycle. ' +
+                'Each step sends a real command to a microservice, which publishes a domain event. ' +
+                'The read model on the right updates via eventual consistency.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; Auto Demo started &#9552;&#9552;&#9552;</span>');
+
+            for (let i = 0; i < STEPS.length; i++) {
+                const step = STEPS[i];
+                stepIndex = i;
+                const explanations = [
+                    `<strong>Step 1: Create Order</strong> &mdash; A customer places an order. The Order Service saves it to PostgreSQL and publishes <strong>ORDER_CREATED</strong> to RabbitMQ.`,
+                    `<strong>Step 2: Confirm Order</strong> &mdash; The restaurant confirms the order. <strong>ORDER_CONFIRMED</strong> event published.`,
+                    `<strong>Step 3: Create Ticket</strong> &mdash; A kitchen ticket is created for the chef. The Ticket Service is a <em>separate service with its own database</em>. <strong>TICKET_CREATED</strong> event published.`,
+                    `<strong>Step 4: Accept Ticket</strong> &mdash; The chef accepts the ticket and starts preparing the food. <strong>TICKET_ACCEPTED</strong> event published.`,
+                    `<strong>Step 5: Schedule Delivery</strong> &mdash; The Delivery Service (yet another separate database!) schedules a rider. <strong>DELIVERY_SCHEDULED</strong> event published.`,
+                    `<strong>Step 6: Pickup Delivery</strong> &mdash; The rider picks up the food. <strong>DELIVERY_PICKED_UP</strong> event published.`,
+                    `<strong>Step 7: Complete Delivery</strong> &mdash; Food delivered to the customer! <strong>DELIVERY_DELIVERED</strong> event published.`,
+                    `<strong>Step 8: Create Invoice</strong> &mdash; The Accounting Service (4th database!) creates the invoice. <strong>INVOICE_CREATED</strong> event. Notice how the read model now shows data from <strong>all 4 services</strong> in one view!`,
+                ];
+                setExplanation('info', explanations[i]);
+                log('sys', `Step ${i + 1}: ${step.name}`);
+
+                await step.action();
+                await pollReadModelWithRetry(4, 600);
+                await sleep(800);
+            }
+
+            stepIndex = STEPS.length;
+            setExplanation('success',
+                '<strong>Demo complete!</strong> Key takeaways: ' +
+                '(1) Each command service has its own PostgreSQL database &mdash; <strong>Database per Service</strong>. ' +
+                '(2) Events flow through RabbitMQ &mdash; <strong>Event-Driven Architecture</strong>. ' +
+                '(3) The Order History Service aggregates events into a denormalized MongoDB view &mdash; <strong>CQRS Read Model</strong>. ' +
+                '(4) The read model is <strong>eventually consistent</strong> &mdash; it updates shortly after each command.');
+            log('sys', '<span class="ok">&#9552;&#9552;&#9552; Auto Demo complete &#9552;&#9552;&#9552;</span>');
+            autoDemoRunning = false;
+        },
+
+        async doReset() {
+            currentOrderId = null; currentTicketId = null;
+            currentDeliveryId = null; currentInvoiceId = null;
+            stepIndex = 0; autoDemoRunning = false; lastKnownUpdate = '';
+            ['Order','Ticket','Delivery','Accounting'].forEach(s => setSvcStatus(s, 'idle', 'Idle'));
+            document.getElementById('eventBubbles').innerHTML = '';
+            document.getElementById('eventList').innerHTML = '';
+            ['rvOrder','rvCustomer','rvItems','rvTotal','rvOrderStatus','rvTicketStatus',
+             'rvDeliveryStatus','rvInvoiceStatus','rvUpdated'].forEach(id => {
+                const el = document.getElementById(id);
+                el.textContent = '-'; el.className = 'rv-value none';
+            });
+            document.getElementById('panelRead').classList.remove('highlight');
+            setButtons(true);
+        },
+
+        async reset() {
+            await this.doReset();
+            document.getElementById('logContent').innerHTML = '';
+            setExplanation('info',
+                'This demo shows the <strong>CQRS pattern</strong> in action. ' +
+                '<strong>Command side</strong>: 4 services, each with its own PostgreSQL database, publish domain events to RabbitMQ. ' +
+                '<strong>Read side</strong>: Order History Service subscribes to all events and maintains a denormalized MongoDB view. ' +
+                'Press <strong>Auto Demo</strong> for a guided walkthrough.');
+            log('sys', 'Reset complete. Ready for demo.');
+        }
+    };
+
+    log('sys', 'Connected to real services. Ready for demo.');
+    startReadPoll();
+})();
+</script>
+</body>
+</html>

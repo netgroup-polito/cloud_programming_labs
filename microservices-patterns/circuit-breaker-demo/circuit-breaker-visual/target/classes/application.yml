@@ -1,0 +1,15 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: circuit-breaker-visual
+
+# Service URLs — defaults for standalone, overridden by env vars in Docker
+services:
+  supplier:
+    url: ${SUPPLIER_URL:http://localhost:8080}
+  store-no-cb:
+    url: ${STORE_NO_CB_URL:http://localhost:8081}
+  store-cb:
+    url: ${STORE_CB_URL:http://localhost:8082}
