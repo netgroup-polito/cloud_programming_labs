@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: supplier-service
+
+logging:
+  level:
+    com.example.supplier: DEBUG

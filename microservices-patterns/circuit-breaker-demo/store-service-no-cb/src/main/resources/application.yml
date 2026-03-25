@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 5        # Very small thread pool to demonstrate thread exhaustion
+      min-spare: 2
+
+spring:
+  application:
+    name: store-service-no-cb
+
+supplier:
+  url: http://localhost:8080
+
+logging:
+  level:
+    com.example.storenocb: DEBUG

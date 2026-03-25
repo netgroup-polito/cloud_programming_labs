@@ -1,0 +1,81 @@
+services:
+
+  order-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: order_user
+      POSTGRES_PASSWORD: order_pass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_user -d orderdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  customer-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: customerdb
+      POSTGRES_USER: customer_user
+      POSTGRES_PASSWORD: customer_pass
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U customer_user -d customerdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8081:8080"
+    depends_on:
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://order-db:5432/orderdb
+      SPRING_DATASOURCE_USERNAME: order_user
+      SPRING_DATASOURCE_PASSWORD: order_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  customer-service:
+    build: ./customer-service
+    ports:
+      - "8082:8080"
+    depends_on:
+      customer-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://customer-db:5432/customerdb
+      SPRING_DATASOURCE_USERNAME: customer_user
+      SPRING_DATASOURCE_PASSWORD: customer_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+
+  saga-visual:
+    build: ./saga-visual
+    ports:
+      - "8090:8090"
+    environment:
+      ORDER_SERVICE_URL: http://order-service:8080
+      CUSTOMER_SERVICE_URL: http://customer-service:8080
+    depends_on:
+      - order-service
+      - customer-service

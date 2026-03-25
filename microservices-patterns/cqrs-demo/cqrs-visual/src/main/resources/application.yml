@@ -1,0 +1,18 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: cqrs-visual
+
+services:
+  order:
+    url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  ticket:
+    url: ${TICKET_SERVICE_URL:http://localhost:8082}
+  delivery:
+    url: ${DELIVERY_SERVICE_URL:http://localhost:8083}
+  accounting:
+    url: ${ACCOUNTING_SERVICE_URL:http://localhost:8084}
+  order-history:
+    url: ${ORDER_HISTORY_SERVICE_URL:http://localhost:8085}
