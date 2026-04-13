@@ -12,12 +12,12 @@ spec:
         app: timeapi
     spec:
       containers:
-      - name: timeapi
-        image: ghcr.io/netgroup-polito/cloudprog-2025/timeapi:main
-        imagePullPolicy: Always
-        resources:
-          limits:
-            memory: "128Mi"
-            cpu: "500m"
-        ports:
-        - containerPort: 8080
+        - name: timeapi
+          image: ghcr.io/netgroup-polito/cloudprog-2025/timeapi:main
+          imagePullPolicy: Always
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 8080
